@@ -5,6 +5,9 @@ ENUM $05D3
 	 
 	sine: .dsb 256
 	cosine: .dsb 256
+	
+	modValue: .dsb 1
+	seed: .dsb 1
 ENDE
 
 InitTemps:
@@ -93,3 +96,43 @@ CosineTableLoopEnd:
  bpl CosineTableLoop
  
  rts
+
+ ;;;;;;;;;;;;;
+ 
+ Mod:  ; (after RTS top two bytes) top of stack: modulo; next on stack: number
+   TSX
+   
+   LDA #$103, x   
+   STA modValue
+   
+   LDA #$104, x
+   
+   SEC
+   
+   ModLoop:
+     SBC modValue
+     BCS ModLoop
+     
+   ADC modValue
+   
+   STA #$104, x
+   
+   RTS
+   
+;;;;;;;;;;;;;;;;
+
+RNG:
+
+  LDA seed
+  BEQ doEor
+  ASL
+  BEQ noEor ;if the input was $80, skip the EOR
+  BCC noEor
+
+doEor:    
+  EOR #$5F
+
+noEor:  
+  STA seed
+  
+  RTS

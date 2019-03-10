@@ -108,6 +108,76 @@ DecEnemyIndexY:
 
 ;;;;;;;;;;;;;
 
+GenerateRandomXPos:
+
+    JSR RNG
+    
+    TXA
+    PHA
+    
+    LDA seed
+    CLC
+    ADC #$20
+    
+    PHA
+    
+    LDA #$F0
+    
+    PHA
+    
+    JSR Mod    
+    
+    PLA
+    
+    ; modded number
+    PLA
+    STA tempBVar
+    
+    ; still need to fetch x register since we used it in mod
+    PLA
+    TAX
+    
+    LDA tempBVar
+    
+    RTS
+
+;;;;;;;;;;;;
+
+GenerateRandomYPos:
+
+    JSR RNG
+    
+    TXA
+    PHA
+    
+    LDA seed
+    ;CLC
+    ;ADC #$20
+    
+    PHA
+    
+    LDA #$D0
+    
+    PHA
+    
+    JSR Mod    
+    
+    PLA
+    
+    ; modded number
+    PLA
+    STA tempBVar
+    
+    ; still need to fetch x register since we used it in mod
+    PLA
+    TAX
+    
+    LDA tempBVar
+    
+    RTS
+
+;;;;;;;;;;;;
+
 InitEnemies:
   LDX #$00
   LDY #$00
@@ -116,35 +186,20 @@ InitEnemies:
     LDA #ATTACK_DELAY
     STA enemies+$3, x
   
-    LDA #$20
+    JSR GenerateRandomYPos
+    LDA tempBVar
+    
   	STA enemies+$1, x ; y-coordinate  	
     STA enemies+$6, x
   
-    ; TODO: Make this RNG for horizontal
-    ;JSR RNG
+    JSR GenerateRandomXPos
     
-    CPX #$00
-    BEQ SetZeroEnemyX
+    LDA tempBVar        
 
-    JSR DecEnemyIndexX
-    
-    LDA enemies, x
-
-    JSR IncEnemyIndexX
-        
-    ASL
-    ASL
-    
-    JMP SaveEnemyX
-    
-    SetZeroEnemyX:
-      LDA #$30
-          
-    SaveEnemyX:
-	  STA enemies, x  ; x-coordinate
-      STA enemies+$5, x
-      STA enemies+$2, x  
-      STA enemies+$4, x
+    STA enemies, x  ; x-coordinate
+    STA enemies+$5, x
+    STA enemies+$2, x  
+    STA enemies+$4, x
       
     LDA #STATE_ENEMY_ALIVE
     STA enemies+$7, x
@@ -168,7 +223,7 @@ LoadEnemySprites:
   LDX #$00              ; start at 0
 LoadEnemySpritesLoop:
   LDA enemySprites, x        ; load data from address (sprites +  x)
-  STA ENEMY_SPRITE, x          ; store into RAM address ($0200 + x)
+  STA #ENEMY_SPRITE, x          ; store into RAM address ($0200 + x)
   INX                   ; X = X + 1
   CPX #$10              ; Compare X to hex $18, decimal 24
   BNE LoadEnemySpritesLoop   ; Branch to LoadSpritesLoop if compare was Not Equal to zero
