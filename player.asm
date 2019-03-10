@@ -5,10 +5,12 @@ ENUM $0008
   playerY: dsb 1
   playerShootSalvo: dsb 1
   playerShootDelay: dsb 1
-  bullets: dsb 32 ; 2 bytes per bullet to store (x,y)
+  bullets: dsb 24 ; 2 bytes per bullet to store (x,y)
   bulletCount: dsb 1
   bulletIndex: dsb 1  
   engineFlickerDelay: dsb 1
+  playerState: .dsb 1
+  frameCounter: .dsb 1
 ENDE
 
 ;; constants
@@ -16,11 +18,15 @@ PLAYER_SPRITE = $0200
 BULLET_SPRITE = $021C
 
 BULLET_SPEED = $08
-MAX_PLAYER_BULLETS = $10
+MAX_PLAYER_BULLETS = $0C
 MAX_SALVO = $04
 SHOOT_DELAY = $08
-MAX_PLAYER_BULLETS_INDEX = $20
+MAX_PLAYER_BULLETS_INDEX = $18
 ENGINE_FLICKER_DELAY = $06
+
+STATE_PLAYER_ALIVE = #$01
+STATE_PLAYER_DYING = #$02
+STATE_PLAYER_DEAD = #$03
 
 ;;;;;;;;;;;;;;;
 
@@ -45,22 +51,28 @@ LoadPlayerSpritesLoop:
 ;;;;;;;;;;;
 
 InitPlayerVars:
-  LDX #$00
-  STX bulletCount 
-  STX playerShootDelay
+  LDA #$00
+  STA bulletCount 
+  STA playerShootDelay
   
-  LDX #$80
-  STX playerX
+  LDA #$80
+  STA playerX
   
-  LDX #$D5
-  STX playerY
+  LDA #$D5
+  STA playerY
   
-  LDX #MAX_SALVO
-  STX playerShootSalvo
+  LDA #MAX_SALVO
+  STA playerShootSalvo
   
-  LDX #ENGINE_FLICKER_DELAY
-  STX engineFlickerDelay
+  LDA #ENGINE_FLICKER_DELAY
+  STA engineFlickerDelay
   
+  LDA #STATE_PLAYER_ALIVE
+  STA playerState
+
+  LDA #$FF
+  STA frameCounter
+    
   RTS
   
 ;;;;;;;;;;;;;
@@ -150,7 +162,106 @@ HandlePlayerInput:
   
 ;;;;;;;;;;;;;;;;;
 
+DoPlayerBehaviour:
+
+  LDA playerState
+  
+  CMP #STATE_PLAYER_ALIVE
+  BNE CheckPlayerStateDying
+  
+  JSR CheckEnemyBulletCollision
+  
+  CheckPlayerStateDying:
+  
+  LDA playerState
+  CMP #STATE_PLAYER_DYING
+  BNE CheckPlayerStateDone
+
+  JSR UpdateDyingPlayer
+  
+  CheckPlayerStateDone:
+  
+  RTS
+
+;;;;;;;;;;;;;;;;;
+
+UpdateDyingPlayer:
+  LDA frameCounter
+  CMP #$FF
+  BNE UpdateDyingPlayerCheckCounter
+  
+  LDA #$00
+  STA frameCounter
+  
+  ; use this var for delay to save space
+  STA engineFlickerDelay
+  
+  JMP UpdateDyingPlayerDone
+  
+  UpdateDyingPlayerCheckCounter:
+    ; if we've shown enough frames, we're done
+    CMP #MAX_EXPLOSION_FRAMES
+    BNE UpdateDyingPlayerDone
+    
+    LDA #STATE_PLAYER_DEAD
+    STA playerState
+  
+  UpdateDyingPlayerDone:
+    RTS
+
+;;;;;;;;;;;;;;;;
+
+CheckEnemyBulletCollision:
+  LDA enemyBulletCount
+  BEQ CheckEnemyCollisionDone
+    
+  LDX #$00  ; enemy bullet index
+  
+  CheckEnemyBulletCollisionLoop:
+    CLC
+    
+    ; check x
+    LDA enemyBullets, x
+    SBC playerX
+    SBC #$10-1 ; player size
+    ADC #$10+$10-1
+    BCC CheckNextEnemyBulletCollision
+    
+    CLC
+    
+    ; check y if carry is set
+    LDA enemyBullets+$1, x
+    SBC playerY
+    SBC #$18-1 ; player size
+    ADC #$08+$18-1
+    BCC CheckNextEnemyBulletCollision
+    
+    LDA #STATE_PLAYER_DYING
+    STA playerState
+    
+    CheckNextEnemyBulletCollision:
+    
+    INX
+    INX
+    INX
+    INX
+    INX
+    INX
+    
+    CPX bulletIndex
+    BNE CheckEnemyBulletCollisionLoop
+
+  CheckEnemyCollisionDone:
+    
+    RTS
+    
+;;;;;;;;;;;;;;;;;
+
 UpdatePlayerSprites:
+  LDA playerState
+  CMP #STATE_PLAYER_ALIVE
+  BNE CheckPlayerSpritesDying
+
   ; vert
   LDA playerY 
   
@@ -199,11 +310,108 @@ UpdatePlayerSprites:
   DecEngineFlickerDelay:
     DEC engineFlickerDelay
   
+  JMP UpdatePlayerSpritesCheckStateDone
+  
+  CheckPlayerSpritesDying:
+  
+  LDA playerState
+  CMP #STATE_PLAYER_DYING
+  BNE CheckPlayerSpritesDead
+  
+  JSR HandlePlayerDyingSprites
+
+  CheckPlayerSpritesDead:
+  
+  LDA playerState
+  CMP #STATE_PLAYER_DEAD
+  BNE UpdatePlayerSpritesCheckStateDone
+  
+  JSR HandlePlayerDeadSprites
+  
+  UpdatePlayerSpritesCheckStateDone:
+  
   JSR DisplayPlayerBullets
   
   RTS
+
+;;;;;;;;;;;;;;;;
+HandlePlayerDeadSprites:
+
+  LDA #$FE
+  LDX #$00
+  
+  CleanPlayerSpritesLoop:
+    STA #PLAYER_SPRITE, x
+  
+    INX
+    CPX #$1C
+    BNE CleanPlayerSpritesLoop
+    
+  RTS
   
 ;;;;;;;;;;;;;;;;
+
+HandlePlayerDyingSprites:
+  LDA engineFlickerDelay
+  BNE DecExplosionDelay
+
+  ; just need to update the tiles here since the explosion(s) are right where the player was
+  LDA frameCounter
+  
+  ; going to modulo the counter to get the frame    
+  PHA
+    
+  LDA #MAX_EXPLOSION_FRAMES
+  PHA
+    
+  JSR Mod
+    
+  ; get the return value and also clean up
+  PLA        
+  PLA
+  TAX
+    
+  LDA explosionAnim, x
+  
+  STA #PLAYER_SPRITE+$1
+  STA #PLAYER_SPRITE+$5
+  STA #PLAYER_SPRITE+$9
+  STA #PLAYER_SPRITE+$D
+  STA #PLAYER_SPRITE+$11
+  STA #PLAYER_SPRITE+$15
+  STA #PLAYER_SPRITE+$19
+  
+  ; palette (only if different)
+  LDA #PLAYER_SPRITE+$2
+  CMP #$01
+  BEQ PaletteCheckDone
+  
+  LDA #$01
+  STA #PLAYER_SPRITE+$2
+  STA #PLAYER_SPRITE+$6
+  STA #PLAYER_SPRITE+$A
+  STA #PLAYER_SPRITE+$E
+  STA #PLAYER_SPRITE+$12
+  STA #PLAYER_SPRITE+$16
+  STA #PLAYER_SPRITE+$1A
+  
+  PaletteCheckDone:
+    ; increment the frame
+    INC frameCounter
+    
+    ; reset the delay
+    LDA #EXPLOSION_FRAME_DELAY
+    STA engineFlickerDelay  
+  
+    JMP HandlePlayerDyingSpritesDone
+    
+  DecExplosionDelay:
+    DEC engineFlickerDelay
+        
+  HandlePlayerDyingSpritesDone:
+    RTS
+  
+;;;;;;;;;;;;;;;
 
 UpdatePlayerBullets:
   LDA bulletCount

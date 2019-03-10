@@ -4,6 +4,7 @@
 ENUM $0030
   enemies: .dsb 96   ; (centreX, centreY, degrees, attackDelay, numFired, actualX, actualY, state) do this similar to bullets (8 bytes x 12 enemies)
   enemyBullets: .dsb 72 ; (x, y, tile, palette, frameCounter, enemyIndex) => 6 bytes x 12 bullets)
+  enemyExplosions: .dsb 48 ; (x, y, frame, frameDelay) => (4 bytes x 12 enemies)
   enemyCount: .dsb 1
   enemyIndex: .word 1
   enemyDegrees: .dsb 1
@@ -23,7 +24,8 @@ ENDE
 ; constants
 ENEMY_SPRITE = $025C
 ENEMY_META_SPRITE_INTERVAL = $10
-ATTACK_SPRITE = $028C
+ATTACK_SPRITE = $02AC
+ENEMY_EXPLOSION_SPRITE = $02DC
 NUM_ENEMIES_L1 = $02
 TRIG_CENTRE = $20
 ATTACK_DELAY = $0F
@@ -31,10 +33,15 @@ ENEMY_BULLET_SPEED = $02
 MAX_TOTAL_ENEMY_BULLET_COUNT = $04
 MAX_ENEMY_BULLET_COUNT = $02
 MAX_ENEMY_BULLET_INDEX = $48
-MAX_ENEMY_INDEX = $68
+MAX_ENEMY_INDEX = $60
+EXPLOSION_FRAME_DELAY = $04
+MAX_EXPLOSION_FRAMES = $04
+MAX_EXPLOSION_INDEX = $30
 
 STATE_ENEMY_ALIVE = $01
 STATE_ENEMY_DYING = $02
+STATE_ENEMY_DEAD = $FE
+STATE_ENEMY_REMOVE = $FD
 ;;;;;;;;;;;;;
 
 InitiEnemyVars:
@@ -114,6 +121,8 @@ InitEnemies:
     STA enemies+$6, x
   
     ; TODO: Make this RNG for horizontal
+    ;JSR RNG
+    
     CPX #$00
     BEQ SetZeroEnemyX
 
@@ -196,16 +205,8 @@ CheckPlayerBulletCollision:
     ADC #$08+$10-1
     BCC CheckNextPlayerBulletCollision
     
-    ; probably not the most organized way to do this, but, handle the collision here
-    LDA #$FE
-    STA enemies, y
-    STA enemies+$1, y
-    STA enemies+$2, y
-    STA enemies+$3, y
-    STA enemies+$4, y
-    STA enemies+$5, y
-    STA enemies+$6, y
-    
+    ; location of old "mark enemy as dead"
+        
     LDA #STATE_ENEMY_DYING
     STA enemies+$7, y
     
@@ -220,7 +221,7 @@ CheckPlayerBulletCollision:
     BNE CheckPlayerBulletCollisionLoop
 
   CheckPlayerCollisionDone:
-    JSR CleanEnemies
+    ;JSR CleanEnemies
     
     RTS
 
@@ -233,8 +234,8 @@ CleanEnemies:
     CPX #MAX_ENEMY_INDEX
     BEQ CleanEnemiesDone
     
-    LDA enemies, x
-    CMP #$FE
+    LDA enemies+$7, x
+    CMP #STATE_ENEMY_REMOVE
     BEQ DeadEnemy
     
     LDA enemies, x
@@ -327,6 +328,7 @@ DoEnemyBehaviour:
 
 ;;;;;;;;;;;;
 EnemyBulletUpdate:
+
   LDX #$00 ; index for enemies var
   LDY enemyBulletIndex ; index for enemies' bullets
   
@@ -334,6 +336,11 @@ EnemyBulletUpdate:
     LDA enemyBulletCount
     CMP #MAX_TOTAL_ENEMY_BULLET_COUNT
     BEQ EnemyBulletLoopCheck
+  
+    ; only create bullets for enemies who are alive
+    LDA enemies+$7, x
+    CMP #STATE_ENEMY_ALIVE
+    BNE EnemyBulletLoopCheck
   
     LDA enemies+$3, x
     BEQ InitEnemyBullet
@@ -525,16 +532,7 @@ UpdateEnemyFire:
 
 ;;;;;;;;;;;
 
-UpdateEnemySprites:
-  LDX #$00 ; index for enemies var
-  LDY #$00 ; meta-sprite index
-
-  LDA enemyCount
-  BNE UpdateEnemySpritesLoop 
-  
-  JMP CleanEnemySprites  
-  
-  UpdateEnemySpritesLoop:
+UpdateAliveEnemy:
     ; horiz
     LDA enemies, x
     STA tempPos
@@ -636,12 +634,134 @@ UpdateEnemySprites:
 	INC enemies+$2, x
 	INC enemies+$2, x
 
-    JSR IncEnemyIndexX    
+  RTS
+
+;;;;;;;;;;;
+
+
+; TODO: Explosions are currently tied to enemy index (8 as opposed to 4) and this probably needs changing.
+
+UpdateDyingEnemy:
+  
+  LDA enemies, x
+  CMP #$FE
+  BNE InitEnemyExplosion
+  
+  ; only allow the explosion animation to go for so long...
+  LDA enemyExplosions+$2, x
+  CMP #MAX_EXPLOSION_FRAMES
+  BNE UpdateDyingEnemyContinue
+  
+  ; if we're at the max explosion count, set this enemy as dead
+  LDA #STATE_ENEMY_DEAD
+  STA enemies+$7, x
+  
+  JMP UpdateDyingEnemyDone
+  
+  UpdateDyingEnemyContinue:
+  
+  DEC enemyExplosions+$3, x
+  LDA enemyExplosions+$3, x
+  
+  BNE UpdateDyingEnemyDone
+  
+  ; increase the frame counter and reset the frame counter delay
+  INC enemyExplosions+$2, x
+  LDA #EXPLOSION_FRAME_DELAY
+  STA enemyExplosions+$3, x  
+  
+  JMP UpdateDyingEnemyDone
+  
+  ; init the explosion
+  InitEnemyExplosion:
+  
+  LDA enemies+$5, x
+  CLC
+  ADC #$04
+  STA enemyExplosions, x
+  
+  LDA enemies+$6, x
+  CLC
+  ADC #$04
+  STA enemyExplosions+$1, x
+  
+  LDA #$00
+  STA enemyExplosions+$2, x
+  
+  LDA #EXPLOSION_FRAME_DELAY
+  STA enemyExplosions+$3, x
+  
+    LDA #$FE
+    STA enemies, x
+    STA enemies+$1, x
+    STA enemies+$2, x
+    STA enemies+$3, x
+    STA enemies+$4, x
+    STA enemies+$5, x
+    STA enemies+$6, x
+  
+  UpdateDyingEnemyDone:
+    RTS
+;;;;;;;;;;;
+
+UpdateDeadEnemy:  
+  LDA #$00
+  STA enemyExplosions, x
+  STA enemyExplosions+$1, x
+  STA enemyExplosions+$2, x
+  STA enemyExplosions+$3, x
+
+  LDA #STATE_ENEMY_REMOVE
+  STA enemies+$7, x
+
+  RTS
+
+;;;;;;;;;;;
+
+UpdateEnemySprites:
+  LDX #$00 ; index for enemies var
+  LDY #$00 ; meta-sprite index
+
+  LDA enemyCount
+  BNE UpdateEnemySpritesLoop 
+  
+  JMP CleanEnemySprites  
+  
+  UpdateEnemySpritesLoop:
+    LDA enemies+$7, x ; state
+    CMP #STATE_ENEMY_ALIVE
+    BNE UpdateEnemyCheckDyingState
+    
+    JSR UpdateAliveEnemy
 
 	TYA
     CLC
     ADC #ENEMY_META_SPRITE_INTERVAL
     TAY
+    
+    JMP UpdateEnemySpritesLoopCheck
+    
+    UpdateEnemyCheckDyingState:
+    
+    LDA enemies+$7, x ; state
+    CMP #STATE_ENEMY_DYING
+    BNE UpdateEnemyCheckDeadState
+    
+    JSR UpdateDyingEnemy    
+    
+    JMP UpdateEnemySpritesLoopCheck
+
+    UpdateEnemyCheckDeadState:
+    
+    LDA enemies+$7, x ; state
+    CMP #STATE_ENEMY_DEAD
+    BNE UpdateEnemySpritesLoopCheck
+    
+    JSR UpdateDeadEnemy
+
+    UpdateEnemySpritesLoopCheck:
+    
+    JSR IncEnemyIndexX    
         
     CPX enemyIndex
     BNE UpdateEnemySpritesLoopJump
@@ -655,8 +775,6 @@ UpdateEnemySprites:
       CPX #MAX_ENEMY_INDEX
       BEQ UpdateEnemySpritesDone
           
-      LDA #$FE
-      
       CleanEnemySpritesLoop:
       STY tempBVar
       TYA
@@ -684,11 +802,81 @@ UpdateEnemySprites:
     
   UpdateEnemySpritesDone:
   
-  JSR DrawEnemyFire
+  JSR DrawExplosions
   
+  JSR DrawEnemyFire
+
+  JSR CleanEnemies
+      
   RTS
     
 ;;;;;;;;;;;;;;;;;;;;;
+
+DrawExplosions:
+  
+  ;LDA enemyExplosionIndex
+  ;BEQ DrawExplosionsDone
+  
+  LDX #$00 ; explosions index
+  LDY #$00 ; explosions sprite index
+  
+  DrawExplosionsLoop:
+  
+    ; x
+    LDA enemyExplosions, x
+    STA #ENEMY_EXPLOSION_SPRITE+$3, y  
+  
+    ; y
+    LDA enemyExplosions+$1, x
+    STA #ENEMY_EXPLOSION_SPRITE, y
+    
+    ; tile
+    TXA
+    PHA
+    
+    LDA enemyExplosions+$2, x
+    
+    ; going to modulo the counter to get the frame    
+    PHA
+    
+    LDA #$04
+    PHA
+    
+    JSR Mod
+    
+    ; get the return value and also clean up
+    PLA        
+    PLA
+    TAX
+    
+    LDA explosionAnim, x
+    STA #ENEMY_EXPLOSION_SPRITE+$1, y 
+    
+    PLA
+    TAX
+
+    ; attrs
+    LDA #$01 ; just set the palette
+    STA #ENEMY_EXPLOSION_SPRITE+$2, y
+    
+    INX
+    INX
+    INX
+    INX
+  
+    INY
+    INY
+    INY
+    INY
+  
+    CPX #MAX_EXPLOSION_INDEX
+    BNE DrawExplosionsLoop
+    
+  DrawExplosionsDone:
+    RTS    
+    
+;;;;;;;;;;;;;;;;;;;;;
+
 DrawEnemyFire:
   LDA enemyBulletCount
   BEQ DrawEnemyFireDone 
@@ -748,8 +936,13 @@ DrawEnemyFire:
     
       LDA #$FE
       STA #ATTACK_SPRITE, y
+      STA #ATTACK_SPRITE+$1, y
+      STA #ATTACK_SPRITE+$2, y
+      STA #ATTACK_SPRITE+$3, y      
     
       INY
+      
+      JSR IncEnemyIndexX
     
       JMP RemoveOldBulletSprites 
     
@@ -772,5 +965,8 @@ enemySprites:
    .db $00, $18, $00, $00
    
 attackAnim:
-  .db $14, $16, $18  
+  .db $14, $16, $18
+  
+explosionAnim:
+  .db $20, $21, $22, $23
   

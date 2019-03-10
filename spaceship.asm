@@ -87,6 +87,9 @@ InitVars:
   LDA #STATEPLAYING
   STA gamestate
   
+  LDA #$00
+  STA seed
+  
   JSR InitPlayerVars
   JSR InitiEnemyVars
     
@@ -135,13 +138,16 @@ GameEngineDone:
 EnginePlaying:
 
 JSR HandlePlayerInput
+JSR DoPlayerBehaviour
 JSR DoEnemyBehaviour
+
+JMP GameEngineDone
 
 UpdateSprites:
   JSR UpdatePlayerSprites
   JSR UpdateEnemySprites
  
-JSR ReadController1
+  RTS
 
 ;;;;;;;;;;;
 
