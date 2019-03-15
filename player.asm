@@ -177,6 +177,7 @@ DoPlayerBehaviour:
   BNE CheckPlayerStateDying
   
   JSR CheckEnemyBulletCollision
+  JSR CheckEnemyCollision
   
   CheckPlayerStateDying:
   
@@ -218,9 +219,45 @@ UpdateDyingPlayer:
 
 ;;;;;;;;;;;;;;;;
 
+CheckEnemyCollision:
+  LDX #$00
+  
+  CheckEnemyCollisionLoop:
+    CLC
+    
+    ; check x
+    LDA enemies+$5, x
+    SBC playerX
+    SBC #$10-1
+    ADC #$10+$10-1
+    BCC CheckNextEnemyCollision
+    
+    CLC
+    
+    ; check y if carry is set
+    LDA enemies+$6, x
+    SBC playerY
+    SBC #$18-1
+    ADC #$10+$18-1
+    BCC CheckNextEnemyCollision
+    
+    ; collision!
+    LDA #STATE_PLAYER_DYING
+    STA playerState
+
+    CheckNextEnemyCollision:
+      JSR IncEnemyIndexX
+    
+      CPX enemyIndex
+      BNE CheckEnemyCollisionLoop
+        
+    CheckEnemyCollisionDone:
+  RTS
+;;;;;;;;;;;;;;;;
+
 CheckEnemyBulletCollision:
   LDA enemyBulletCount
-  BEQ CheckEnemyCollisionDone
+  BEQ CheckEnemyBulletCollisionDone
     
   LDX #$00  ; enemy bullet index
   
@@ -243,6 +280,7 @@ CheckEnemyBulletCollision:
     ADC #$08+$18-1
     BCC CheckNextEnemyBulletCollision
     
+    ; collision!
     LDA #STATE_PLAYER_DYING
     STA playerState
     
@@ -258,7 +296,7 @@ CheckEnemyBulletCollision:
     CPX bulletIndex
     BNE CheckEnemyBulletCollisionLoop
 
-  CheckEnemyCollisionDone:
+  CheckEnemyBulletCollisionDone:
     
     RTS
     
