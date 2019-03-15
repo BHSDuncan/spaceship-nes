@@ -1,5 +1,5 @@
 ;; variables
-ENUM $0008
+ENUM $000A
   buttons1:   dsb 1  ; player 1 gamepad buttons, one bit per button
   playerX: dsb 1
   playerY: dsb 1
@@ -177,7 +177,7 @@ DoPlayerBehaviour:
   BNE CheckPlayerStateDying
   
   JSR CheckEnemyBulletCollision
-  JSR CheckEnemyCollision
+  ;JSR CheckEnemyCollision
   
   CheckPlayerStateDying:
   
@@ -293,7 +293,7 @@ CheckEnemyBulletCollision:
     INX
     INX
     
-    CPX bulletIndex
+    CPX enemyBulletIndex
     BNE CheckEnemyBulletCollisionLoop
 
   CheckEnemyBulletCollisionDone:

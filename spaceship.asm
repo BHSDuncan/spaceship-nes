@@ -15,16 +15,20 @@ ENUM $0001  ;;start variables at ram location 1; at 0, setting #$02 to certain v
   pointerLow: .dsb 1
   pointerHigh: .dsb 1
   scroll: .dsb 1
+  scrollFlip: .dsb 1
   nametable: .dsb 1
   sleeping: .dsb 1
   
   needDMA: .dsb 1
+  needDraw: .dsb 1  
 ENDE
 
 ;; constants
 STATETITLE     = $00  
 STATEPLAYING   = $01  
 STATEGAMEOVER  = $02  
+
+DRAW_DELAY = $03
 
 ;;;;;;;;;;;;;;;;;;
 
@@ -189,11 +193,11 @@ LoadAttribute2Loop:
   JSR LoadPlayerSprites
   JSR LoadEnemySprites
 
-  LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
-  STA $2000
+  ;LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
+  ;STA $2000
 
-  LDA #%00011000   ; enable sprites, enable background, no clipping on left side
-  STA $2001
+  ;LDA #%00011000   ; enable sprites, enable background, no clipping on left side
+  ;STA $2001
 
 ;;;;;;;;;;;;;;;;;;;;
 
@@ -207,10 +211,13 @@ InitVars:
   
   LDA #$00
   STA seed  
-  STA nametable
+  STA nametable  
   
   LDA #$EF
   STA scroll
+  
+  LDA #DRAW_DELAY
+  STA scrollFlip
   
   JSR InitPlayerVars
   JSR InitiEnemyVars
@@ -221,9 +228,25 @@ InitVars:
 ;;;;;;;;;;;;;;;;;;;
 ; Separate the logic from the drawing: Do the logic here, so we don't overload the NMI and risk not getting all the drawing done for vBlank.
 ;
+
+  LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
+  STA $2000
+
+  LDA #%00011000   ; enable sprites, enable background, no clipping on left side
+  STA $2001
+
 DoFrame:
     JSR ReadController1  ;;get the current button data for player 1
   ;JSR ReadController2  ;;get the current button data for player 2
+  
+  DEC scrollFlip
+  BNE GameEngine   
+  
+  LDA #DRAW_DELAY
+  STA scrollFlip
+    
+  LDA #$01
+  STA needDraw  
   
   GameEngine:  
   ;LDA gamestate
@@ -287,7 +310,10 @@ NMI:
   PHA
 
   BIT $2002
-  
+
+LDA needDraw
+BEQ DMACheck
+
   DEC scroll       ; add one to our scroll variable each frame
 NTSwapCheck:
   LDA scroll       ; check if the scroll just wrapped from 255 to 0
@@ -322,11 +348,17 @@ NTSwapCheckDone:
   LDA #%00011000   ; enable sprites, enable background, no clipping on left side
   STA $2001
 
+  LDA #$00
+  STA needDraw
+
+  DMACheck:
+  
   LDA needDMA
   BEQ RestoreRegisters
   
   LDA #$00
   STA needDMA
+
   STA $2003       
   LDA #$02
   STA $4014       ; sprite DMA from $0200

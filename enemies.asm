@@ -26,7 +26,7 @@ ENEMY_SPRITE = $025C
 ENEMY_META_SPRITE_INTERVAL = $10
 ATTACK_SPRITE = $02AC
 ENEMY_EXPLOSION_SPRITE = $02DC
-NUM_ENEMIES_L1 = $02
+NUM_ENEMIES_L1 = $03
 TRIG_CENTRE = $20
 ATTACK_DELAY = $0F
 ENEMY_BULLET_SPEED = $02
@@ -356,6 +356,94 @@ CleanEnemies:
     RTS
     
 ;;;;;;;;;;;
+EnemyAliveBehaviour:
+ 
+   LDA enemies+$1, x
+   
+   ; for this behaviour, go in circles until halfway down the screen; then just go normal like
+   CMP #$77
+   BCS EnemyGoStraight
+   
+    ; horiz
+    LDA enemies, x
+    STA tempPos
+    
+    LDA enemies+$2, x
+    STA enemyDegrees
+    
+    TXA
+    PHA
+    
+    LDX enemyDegrees
+    LDA sine, x
+    
+    SEC
+    SBC #TRIG_CENTRE
+    STA tempTrigAmount
+    BMI SubEnemyX
+    
+    ; clearing the carry flag allows for proper addition; otherwise, it will properly "add" a negative number     
+    CLC
+    
+    SubEnemyX:
+    LDA tempPos
+    ADC tempTrigAmount
+    STA tempPos
+              
+    PLA
+    TAX
+      
+    ; store actual x
+    LDA tempPos
+    STA enemies+$5, x
+      
+    ; vert   
+    LDA enemies+$1, x
+    STA tempPos
+    
+    TXA
+    PHA
+    
+    LDX enemyDegrees
+    LDA cosine, x
+    
+    SEC
+    SBC #TRIG_CENTRE
+    STA tempTrigAmount
+    BPL SubEnemyY
+    
+    SEC
+    
+    SubEnemyY:
+    LDA tempPos
+    SBC tempTrigAmount
+    STA tempPos
+    
+    PLA
+    TAX
+    
+    ; store actual y
+    LDA tempPos
+    STA enemies+$6, x   
+     
+    ; increment angle
+	INC enemies+$2, x
+	INC enemies+$2, x
+	INC enemies+$2, x
+    
+    INC enemies+$1, x
+    
+    JMP EnemyAliveBehaviourDone
+      
+    EnemyGoStraight:      
+      INC enemies+$1, x
+      INC enemies+$6, x
+    
+    EnemyAliveBehaviourDone:
+      
+  RTS
+
+;;;;;;;;;;;
 
 DoEnemyBehaviour:
   JSR UpdateEnemyFire  ; update any existing bullets
@@ -375,7 +463,9 @@ DoEnemyBehaviour:
     
     CMP #STATE_ENEMY_ALIVE
     BNE DyingStateCheck
-        
+    
+    JSR EnemyAliveBehaviour
+    
     JMP EnemyStateLoopCheck
   
     DyingStateCheck:
@@ -584,6 +674,7 @@ UpdateEnemyFire:
   BEQ DoneBullets    
   
   DEX
+  BMI DoneBullets
   
   ClearExcessBullets:
     LDA #$00
@@ -591,7 +682,7 @@ UpdateEnemyFire:
     
     DEX
     CPX enemyBulletIndex
-    BCS ClearExcessBullets ; if we use BNE, this won't clear what's at enemyBulletIndex, so use >=
+    BPL ClearExcessBullets ; if we use BNE, this won't clear what's at enemyBulletIndex, so use positive
     
     JMP UpdateEnemyFireDone    
   
@@ -606,75 +697,22 @@ UpdateAliveEnemy:
     INC needDMA
      
     ; horiz
-    LDA enemies, x
-    STA tempPos
-    
-    LDA enemies+$2, x
-    STA enemyDegrees
-    
-    TXA
-    PHA
-    
-    LDX enemyDegrees
-    LDA sine, x
-    
-    SEC
-    SBC #TRIG_CENTRE
-    STA tempTrigAmount
-    BMI SubEnemyX
-    
-    ; clearing the carry flag allows for proper addition; otherwise, it will properly "add" a negative number     
+    LDA enemies+$5, x
+    STA #ENEMY_SPRITE+$3, y
+    STA #ENEMY_SPRITE+$B, y
     CLC
-    
-    SubEnemyX:
-    LDA tempPos
-    ADC tempTrigAmount
-    STA tempPos
-        
-    XTrigDone:   
-      STA #ENEMY_SPRITE+$3, y
-      STA #ENEMY_SPRITE+$B, y
-      CLC
-      ADC #$08
-      STA #ENEMY_SPRITE+$7, y      
-      STA #ENEMY_SPRITE+$F, y
-      
-      PLA
-      TAX
-      
-    ; store actual x
-    LDA tempPos
-    STA enemies+$5, x
-      
+    ADC #$08
+    STA #ENEMY_SPRITE+$7, y      
+    STA #ENEMY_SPRITE+$F, y
+            
     ; vert   
-    LDA enemies+$1, x
-    STA tempPos
-    
-    TXA
-    PHA
-    
-    LDX enemyDegrees
-    LDA cosine, x
-    
-    SEC
-    SBC #TRIG_CENTRE
-    STA tempTrigAmount
-    BPL SubEnemyY
-    
-    SEC
-    
-    SubEnemyY:
-    LDA tempPos
-    SBC tempTrigAmount
-    STA tempPos
-    
-    YTrigDone:
-      STA #ENEMY_SPRITE, y
-      STA #ENEMY_SPRITE+$4, y
-      CLC
-      ADC #$08
-      STA #ENEMY_SPRITE+$8, y
-      STA #ENEMY_SPRITE+$C, y
+    LDA enemies+$6, x
+    STA #ENEMY_SPRITE, y
+    STA #ENEMY_SPRITE+$4, y
+    CLC
+    ADC #$08
+    STA #ENEMY_SPRITE+$8, y
+    STA #ENEMY_SPRITE+$C, y
 
     ; tile
     LDA #$10
@@ -692,19 +730,6 @@ UpdateAliveEnemy:
     STA #ENEMY_SPRITE+$6, y
     STA #ENEMY_SPRITE+$A, y
     STA #ENEMY_SPRITE+$E, y
-    	
-    PLA
-    TAX
-    
-    ; store actual y
-    LDA tempPos
-    STA enemies+$6, x   
-    
-    
-    ; increment angle
-	INC enemies+$2, x
-	INC enemies+$2, x
-	INC enemies+$2, x
 
   RTS
 
