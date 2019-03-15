@@ -10,13 +10,13 @@ ENUM $0030
   enemyDegrees: .dsb 1
   enemyBulletCount: .dsb 1
   enemyBulletIndex: .word 1
+  enemyExplosionCount: .dsb 1
 
   tempPos: .dsb 1
   tempTrigAmount: .dsb 1
   maxIndex: .word 1
-  tempX: .dsb 1
-  tempY: .dsb 1
   tempBVar: .dsb 1
+  enemiesNeedCleaning: .dsb 1
 ENDE
 
 ;;;;;;;;;;;
@@ -35,7 +35,7 @@ MAX_ENEMY_BULLET_COUNT = $02
 MAX_ENEMY_BULLET_INDEX = $48
 MAX_ENEMY_INDEX = $60
 EXPLOSION_FRAME_DELAY = $04
-MAX_EXPLOSION_FRAMES = $04
+MAX_EXPLOSION_FRAMES = $03
 MAX_EXPLOSION_INDEX = $30
 
 STATE_ENEMY_ALIVE = $01
@@ -54,6 +54,16 @@ InitiEnemyVars:
   STA enemyDegrees
   STA enemyBulletCount
   STA enemyBulletIndex
+  STA enemyExplosionCount
+  STA enemiesNeedCleaning
+  
+  LDA #$00
+  LDX #$00
+  InitEnemyBulletsLoop:
+    STA enemyBullets, x
+    INX
+    CPX #MAX_ENEMY_BULLET_INDEX
+    BNE InitEnemyBulletsLoop
   
   RTS
 ;;;;;;;;;;;;;
@@ -285,6 +295,8 @@ CleanEnemies:
   LDX #$00 ; enemies index
   LDY #$00 ; new enemies index
 
+  STX enemiesNeedCleaning
+
   CleanEnemiesLoop:
     CPX #MAX_ENEMY_INDEX
     BEQ CleanEnemiesDone
@@ -322,6 +334,8 @@ CleanEnemies:
     JMP CheckNextEnemy
     
     DeadEnemy:
+      DEC enemyExplosionCount     
+    
       DEC enemyCount
       
       DEC enemyIndex
@@ -384,14 +398,14 @@ DoEnemyBehaviour:
 ;;;;;;;;;;;;
 EnemyBulletUpdate:
 
+  LDA enemyBulletCount
+  CMP #MAX_TOTAL_ENEMY_BULLET_COUNT
+  BCS EnemyBulletUpdateDone    
+
   LDX #$00 ; index for enemies var
   LDY enemyBulletIndex ; index for enemies' bullets
   
   EnemyBulletLoop:
-    LDA enemyBulletCount
-    CMP #MAX_TOTAL_ENEMY_BULLET_COUNT
-    BEQ EnemyBulletLoopCheck
-  
     ; only create bullets for enemies who are alive
     LDA enemies+$7, x
     CMP #STATE_ENEMY_ALIVE
@@ -418,9 +432,11 @@ EnemyBulletUpdate:
 
       ; need the (x,y) of the enemy AFTER the trig has been applied
       
+      ; x
       LDA enemies+$5, x
       STA enemyBullets, y
       
+      ; y
       LDA enemies+$6, x
       CLC
       ADC #$08
@@ -451,6 +467,7 @@ EnemyBulletUpdate:
       
       STY enemyBulletIndex  
       
+    EnemyBulletUpdateDone:
       RTS
 
 
@@ -560,12 +577,11 @@ UpdateEnemyFire:
   ; values have all been moved up one in most cases...get rid of the excess
   ;CPY #$00
   ;BEQ DoneBullets
-  
+    
   ; if the index remains the same, then nothing to clean up
   CPY enemyBulletIndex
-  BEQ DoneBullets
-  
-  STY enemyBulletIndex
+  STY enemyBulletIndex  
+  BEQ DoneBullets    
   
   DEX
   
@@ -575,12 +591,11 @@ UpdateEnemyFire:
     
     DEX
     CPX enemyBulletIndex
-    BNE ClearExcessBullets
+    BCS ClearExcessBullets ; if we use BNE, this won't clear what's at enemyBulletIndex, so use >=
     
     JMP UpdateEnemyFireDone    
   
   DoneBullets:
-  STY enemyBulletIndex
 
   UpdateEnemyFireDone:
     RTS
@@ -588,6 +603,8 @@ UpdateEnemyFire:
 ;;;;;;;;;;;
 
 UpdateAliveEnemy:
+    INC needDMA
+     
     ; horiz
     LDA enemies, x
     STA tempPos
@@ -697,7 +714,6 @@ UpdateAliveEnemy:
 ; TODO: Explosions are currently tied to enemy index (8 as opposed to 4) and this probably needs changing.
 
 UpdateDyingEnemy:
-  
   LDA enemies, x
   CMP #$FE
   BNE InitEnemyExplosion
@@ -755,6 +771,31 @@ UpdateDyingEnemy:
     STA enemies+$5, x
     STA enemies+$6, x
   
+  INC enemyExplosionCount
+  
+    ; need to clear out enemy sprites          
+    STA #ENEMY_SPRITE, y
+    STA #ENEMY_SPRITE+$1, y
+    STA #ENEMY_SPRITE+$2, y
+    STA #ENEMY_SPRITE+$3, y
+    
+    STA #ENEMY_SPRITE+$4, y
+    STA #ENEMY_SPRITE+$5, y
+    STA #ENEMY_SPRITE+$6, y
+    STA #ENEMY_SPRITE+$7, y
+
+    STA #ENEMY_SPRITE+$8, y
+    STA #ENEMY_SPRITE+$9, y
+    STA #ENEMY_SPRITE+$A, y
+    STA #ENEMY_SPRITE+$B, y
+
+    STA #ENEMY_SPRITE+$C, y
+    STA #ENEMY_SPRITE+$D, y
+    STA #ENEMY_SPRITE+$E, y
+    STA #ENEMY_SPRITE+$F, y
+  
+    INC needDMA
+ 
   UpdateDyingEnemyDone:
     RTS
 ;;;;;;;;;;;
@@ -765,9 +806,12 @@ UpdateDeadEnemy:
   STA enemyExplosions+$1, x
   STA enemyExplosions+$2, x
   STA enemyExplosions+$3, x
-
+  
   LDA #STATE_ENEMY_REMOVE
   STA enemies+$7, x
+  
+  LDA #$01
+  STA enemiesNeedCleaning
 
   RTS
 
@@ -780,7 +824,8 @@ UpdateEnemySprites:
   LDA enemyCount
   BNE UpdateEnemySpritesLoop 
   
-  JMP CleanEnemySprites  
+  ;JMP CleanEnemySprites
+  JMP UpdateEnemyNext  
   
   UpdateEnemySpritesLoop:
     LDA enemies+$7, x ; state
@@ -788,11 +833,6 @@ UpdateEnemySprites:
     BNE UpdateEnemyCheckDyingState
     
     JSR UpdateAliveEnemy
-
-	TYA
-    CLC
-    ADC #ENEMY_META_SPRITE_INTERVAL
-    TAY
     
     JMP UpdateEnemySpritesLoopCheck
     
@@ -817,60 +857,79 @@ UpdateEnemySprites:
     UpdateEnemySpritesLoopCheck:
     
     JSR IncEnemyIndexX    
-        
+    
+    ; increase the meta sprite index for drawing
+	TYA
+    CLC
+    ADC #ENEMY_META_SPRITE_INTERVAL
+    TAY
+    
     CPX enemyIndex
     BNE UpdateEnemySpritesLoopJump
     
-    JMP CleanEnemySprites        
+    ;JMP CleanEnemySprites
+    JMP UpdateEnemyNext        
     
   UpdateEnemySpritesLoopJump:
     JMP UpdateEnemySpritesLoop
     
-  CleanEnemySprites:
-      CPX #MAX_ENEMY_INDEX
-      BEQ UpdateEnemySpritesDone
+  ;CleanEnemySprites:
+      ; need to clear out enemy sprites that are dead
+  ;    CPX #MAX_ENEMY_INDEX
+  ;    BEQ UpdateEnemySpritesDone
           
-      CleanEnemySpritesLoop:
-      STY tempBVar
-      TYA
-      CLC
-      ADC #$0F
-      STA tempBVar
+  ;    CleanEnemySpritesLoop:
+  ;    STY tempBVar
+  ;    TYA
+  ;    CLC
+  ;    ADC #$0F
+  ;    STA tempBVar
             
-      ClearEnemySpriteLoop:
-        STA #ENEMY_SPRITE, y
-        INY
+  ;    ClearEnemySpriteLoop:
+  ;      STA #ENEMY_SPRITE, y
+  ;      INY
         
-        CPY tempBVar
-        BEQ ClearEnemySpritesLoopDone
+  ;      CPY tempBVar
+  ;      BEQ ClearEnemySpritesLoopDone
         
-        JMP ClearEnemySpriteLoop
+  ;      JMP ClearEnemySpriteLoop
     
-      ClearEnemySpritesLoopDone:
+  ;    ClearEnemySpritesLoopDone:
+           
+      ;JSR IncEnemyIndexX
             
-      JSR IncEnemyIndexX
-            
-      CPX #MAX_ENEMY_INDEX
-      BEQ UpdateEnemySpritesDone
+      ;CPX #MAX_ENEMY_INDEX
+      ;BEQ UpdateEnemySpritesDone
     
-      JMP CleanEnemySpritesLoop
+      ;JMP CleanEnemySpritesLoop
+
+  UpdateEnemyNext:
     
   UpdateEnemySpritesDone:
   
-  JSR DrawExplosions
+  ;JSR DrawExplosions
   
   JSR DrawEnemyFire
 
-  JSR CleanEnemies
-      
-  RTS
+  LDA enemiesNeedCleaning
+  BNE CleanEnemiesJump
+  
+  JMP UpdateEnemySpritesRTS
+  
+  CleanEnemiesJump:
+    JMP CleanEnemies
+  
+  UpdateEnemySpritesRTS:
+    RTS
     
 ;;;;;;;;;;;;;;;;;;;;;
 
 DrawExplosions:
   
-  ;LDA enemyExplosionIndex
-  ;BEQ DrawExplosionsDone
+  LDA enemyExplosionCount
+  BEQ DrawExplosionsDone
+  
+  INC needDMA  
   
   LDX #$00 ; explosions index
   LDY #$00 ; explosions sprite index
@@ -936,6 +995,8 @@ DrawEnemyFire:
   LDA enemyBulletCount
   BEQ DrawEnemyFireDone 
   
+  INC needDMA  
+  
   LDX #$00
   LDY #$00  
   
@@ -977,7 +1038,13 @@ DrawEnemyFire:
     TAY
     
     CPX enemyBulletIndex
+    ;BNE DrawEnemyFireLoop
+
+    ;CPX #MAX_ENEMY_BULLET_INDEX
+    ;LDA #ATTACK_SPRITE, y
     BNE DrawEnemyFireLoop
+    
+    ;RTS
     
     ; remove any "old" bullets
     RemoveOldBulletSprites:
@@ -996,8 +1063,17 @@ DrawEnemyFire:
       STA #ATTACK_SPRITE+$3, y      
     
       INY
+      INY
+      INY
+      INY
       
-      JSR IncEnemyIndexX
+      ;JSR IncEnemyIndexX
+      INX
+      INX
+      INX
+      INX
+      INX
+      INX
     
       JMP RemoveOldBulletSprites 
     

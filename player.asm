@@ -11,6 +11,8 @@ ENUM $0008
   engineFlickerDelay: dsb 1
   playerState: .dsb 1
   frameCounter: .dsb 1
+  
+  needsSpriteUpdate: .dsb 1
 ENDE
 
 ;; constants
@@ -40,11 +42,11 @@ LoadPlayerSpritesLoop:
   BNE LoadPlayerSpritesLoop   ; Branch to LoadSpritesLoop if compare was Not Equal to zero
                         ; if compare was equal to 16, keep going down
 
-  LDA #%10000000   ; enable NMI, sprites from Pattern Table 0
-  STA $2000
+  ;LDA #%10000000   ; enable NMI, sprites from Pattern Table 0
+  ;STA $2000
 
-  LDA #%00010000   ; enable sprites
-  STA $2001
+  ;LDA #%00010000   ; enable sprites
+  ;STA $2001
   
   RTS
   
@@ -54,6 +56,7 @@ InitPlayerVars:
   LDA #$00
   STA bulletCount 
   STA playerShootDelay
+  STA needsSpriteUpdate
   
   LDA #$80
   STA playerX
@@ -95,6 +98,7 @@ HandlePlayerInput:
 	  AND #%00000010
 	  BEQ MoveShipLeftDone ; if this isn't the left button, then we're done
 	  
+	  INC needsSpriteUpdate
 	  LDA playerX
 	  SEC
 	  SBC #$01
@@ -107,6 +111,7 @@ HandlePlayerInput:
 	  AND #%00000001
 	  BEQ MoveShipRightDone ; if this isn't the right button, then we're done
 	
+	  INC needsSpriteUpdate
 	  LDA playerX
 	  CLC
 	  ADC #$01
@@ -118,7 +123,8 @@ HandlePlayerInput:
 	  LDA buttons1
 	  AND #%00001000
 	  BEQ MoveShipUpDone
-	  
+	  	  
+	  INC needsSpriteUpdate
 	  LDA playerY
 	  SEC
 	  SBC #$01
@@ -131,6 +137,7 @@ HandlePlayerInput:
 	  AND #%00000100
 	  BEQ MoveShipDownDone
 	  
+	  INC needsSpriteUpdate
 	  LDA playerY
 	  CLC
 	  ADC #$01
@@ -258,6 +265,9 @@ CheckEnemyBulletCollision:
 ;;;;;;;;;;;;;;;;;
 
 UpdatePlayerSprites:
+  LDA needsSpriteUpdate
+  BEQ UpdatePlayerSpritesDone
+  
   LDA playerState
   CMP #STATE_PLAYER_ALIVE
   BNE CheckPlayerSpritesDying
@@ -310,6 +320,8 @@ UpdatePlayerSprites:
   DecEngineFlickerDelay:
     DEC engineFlickerDelay
   
+  INC needDMA
+  
   JMP UpdatePlayerSpritesCheckStateDone
   
   CheckPlayerSpritesDying:
@@ -319,6 +331,8 @@ UpdatePlayerSprites:
   BNE CheckPlayerSpritesDead
   
   JSR HandlePlayerDyingSprites
+  
+  INC needDMA
 
   CheckPlayerSpritesDead:
   
@@ -328,11 +342,14 @@ UpdatePlayerSprites:
   
   JSR HandlePlayerDeadSprites
   
+  INC needDMA
+  
   UpdatePlayerSpritesCheckStateDone:
   
   JSR DisplayPlayerBullets
   
-  RTS
+  UpdatePlayerSpritesDone:
+    RTS
 
 ;;;;;;;;;;;;;;;;
 HandlePlayerDeadSprites:
@@ -414,6 +431,9 @@ HandlePlayerDyingSprites:
 ;;;;;;;;;;;;;;;
 
 UpdatePlayerBullets:
+  ; TODO: Figure out when the last bullet has just been removed so we can save future sprite updates until necessary.
+  INC needsSpriteUpdate
+  
   LDA bulletCount
   CMP #$00
   BEQ RemoveFirstBulletEntry
@@ -498,7 +518,8 @@ UpdatePlayerBullets:
 ;;;;;;;;;;;;;;;;
 
 DisplayPlayerBullets:
-
+  INC needDMA
+  
   ; if we have an empty bullet count, we may need to remove the first bullet there, but have to do a bit of trickery since underflow prevents a normal lookup
   LDA bulletCount
   CMP #$00
