@@ -907,7 +907,7 @@ UpdateEnemySprites:
     
   UpdateEnemySpritesDone:
   
-  ;JSR DrawExplosions
+  JSR DrawExplosions
   
   JSR DrawEnemyFire
 
