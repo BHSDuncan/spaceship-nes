@@ -295,8 +295,6 @@ CleanEnemies:
   LDX #$00 ; enemies index
   LDY #$00 ; new enemies index
 
-  STX enemiesNeedCleaning
-
   CleanEnemiesLoop:
     CPX #MAX_ENEMY_INDEX
     BEQ CleanEnemiesDone
@@ -351,15 +349,29 @@ CleanEnemies:
       JSR IncEnemyIndexX
       
       JMP CleanEnemiesLoop
-
+  
   CleanEnemiesDone:
     RTS
-    
+
+;;;;;;;;;;
+
+EnemyDeadBehaviour:
+
+  RTS
+
 ;;;;;;;;;;;
 EnemyAliveBehaviour:
  
    LDA enemies+$1, x
    
+   ;CMP #$EF
+   ;BCS EnemyAliveContinue
+   
+   
+   
+   ;JMP EnemyAliveBehaviourDone
+   
+   EnemyAliveContinue:
    ; for this behaviour, go in circles until halfway down the screen; then just go normal like
    CMP #$77
    BCS EnemyGoStraight
@@ -472,6 +484,10 @@ DoEnemyBehaviour:
     
     ;CMP #STATE_ENEMY_DYING
     
+    CMP #STATE_ENEMY_DEAD
+    BNE EnemyStateLoopCheck
+    
+    JSR EnemyDeadBehaviour
     
     EnemyStateLoopCheck:
 
@@ -694,8 +710,6 @@ UpdateEnemyFire:
 ;;;;;;;;;;;
 
 UpdateAliveEnemy:
-    INC needDMA
-     
     ; horiz
     LDA enemies+$5, x
     STA #ENEMY_SPRITE+$3, y
@@ -731,6 +745,8 @@ UpdateAliveEnemy:
     STA #ENEMY_SPRITE+$A, y
     STA #ENEMY_SPRITE+$E, y
 
+    INC needDMA
+     
   RTS
 
 ;;;;;;;;;;;
@@ -835,8 +851,7 @@ UpdateDeadEnemy:
   LDA #STATE_ENEMY_REMOVE
   STA enemies+$7, x
   
-  LDA #$01
-  STA enemiesNeedCleaning
+  INC enemiesNeedCleaning
 
   RTS
 
@@ -942,12 +957,60 @@ UpdateEnemySprites:
   JMP UpdateEnemySpritesRTS
   
   CleanEnemiesJump:
-    JMP CleanEnemies
+    JSR CleanEnemies
+    JSR CleanEnemySprites
   
   UpdateEnemySpritesRTS:
     RTS
     
 ;;;;;;;;;;;;;;;;;;;;;
+
+CleanEnemySprites:
+  LDX #$00
+  LDA #$00
+  
+  CESAdvanceToPosition:
+    CLC
+    ADC #ENEMY_META_SPRITE_INTERVAL
+    INX
+    CPX enemyCount
+    BNE CESAdvanceToPosition
+  
+  TAY  
+  LDX #$00   
+  
+  CleanEnemySpritesLoop:
+      STY tempBVar
+      TYA
+      CLC
+      ADC #$0F
+      STA tempBVar
+      
+      LDA #$FE
+      
+      CleanEnemySpritesInnerLoop:
+        STA #ENEMY_SPRITE, y
+        INY
+        
+        CPY tempBVar
+        BEQ CleanEnemySpritesInnerLoopDone
+        
+        JMP CleanEnemySpritesInnerLoop
+    
+      CleanEnemySpritesInnerLoopDone:      
+        INX
+        CPX enemiesNeedCleaning
+        BEQ CleanEnemySpritesDone
+    
+        JMP CleanEnemySpritesLoop
+
+  CleanEnemySpritesDone:
+  
+  LDA #$00
+  STA enemiesNeedCleaning
+  RTS
+
+;;;;;;;;;;;;;;;;;;;;;;
 
 DrawExplosions:
   
