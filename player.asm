@@ -177,7 +177,7 @@ DoPlayerBehaviour:
   BNE CheckPlayerStateDying
   
   JSR CheckEnemyBulletCollision
-  ;JSR CheckEnemyCollision
+  JSR CheckEnemyCollision
   
   CheckPlayerStateDying:
   
