@@ -220,6 +220,9 @@ UpdateDyingPlayer:
 ;;;;;;;;;;;;;;;;
 
 CheckEnemyCollision:
+  LDA enemyCount
+  BEQ CheckEnemyCollisionDone
+  
   LDX #$00
   
   CheckEnemyCollisionLoop:
