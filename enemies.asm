@@ -40,6 +40,7 @@ MAX_EXPLOSION_INDEX = $30
 
 STATE_ENEMY_ALIVE = $01
 STATE_ENEMY_DYING = $02
+STATE_ENEMY_OFF_SCREEN = $03
 STATE_ENEMY_DEAD = $FE
 STATE_ENEMY_REMOVE = $FD
 ;;;;;;;;;;;;;
@@ -301,7 +302,7 @@ CleanEnemies:
     
     LDA enemies+$7, x
     CMP #STATE_ENEMY_REMOVE
-    BEQ DeadEnemy
+    BEQ RemoveEnemy
     
     LDA enemies, x
     STA enemies, y
@@ -331,7 +332,7 @@ CleanEnemies:
         
     JMP CheckNextEnemy
     
-    DeadEnemy:
+    RemoveEnemy:
       DEC enemyExplosionCount     
     
       DEC enemyCount
@@ -354,22 +355,96 @@ CleanEnemies:
     RTS
 
 ;;;;;;;;;;
+ExpireEnemy:
+
+    LDA #$FE
+    STA enemies, x
+    STA enemies+$1, x
+    STA enemies+$2, x
+    STA enemies+$3, x
+    STA enemies+$4, x
+    STA enemies+$5, x
+    STA enemies+$6, x
+
+  RTS
+
+;;;;;;;;;;
 
 EnemyDeadBehaviour:
 
   RTS
 
 ;;;;;;;;;;;
+
+EnemyDyingBehaviour:
+  LDA enemies, x
+  CMP #$FE
+  BNE InitEnemyExplosion
+  
+  ; only allow the explosion animation to go for so long...
+  LDA enemyExplosions+$2, x
+  CMP #MAX_EXPLOSION_FRAMES
+  BNE UpdateDyingEnemyContinue
+  
+  ; if we're at the max explosion count, set this enemy as dead
+  LDA #STATE_ENEMY_DEAD
+  STA enemies+$7, x
+  
+  JMP UpdateDyingEnemyDone
+  
+  UpdateDyingEnemyContinue:
+  
+  DEC enemyExplosions+$3, x
+  LDA enemyExplosions+$3, x
+  
+  BNE EnemyDyingBehaviourDone
+  
+  ; increase the frame counter and reset the frame counter delay
+  INC enemyExplosions+$2, x
+  LDA #EXPLOSION_FRAME_DELAY
+  STA enemyExplosions+$3, x  
+  
+  JMP UpdateDyingEnemyDone
+  
+  ; init the explosion
+  InitEnemyExplosion:
+  
+  LDA enemies+$5, x
+  CLC
+  ADC #$04
+  STA enemyExplosions, x
+  
+  LDA enemies+$6, x
+  CLC
+  ADC #$04
+  STA enemyExplosions+$1, x
+  
+  LDA #$00
+  STA enemyExplosions+$2, x
+  
+  LDA #EXPLOSION_FRAME_DELAY
+  STA enemyExplosions+$3, x
+  
+  JSR ExpireEnemy
+  
+  INC enemyExplosionCount
+  
+  EnemyDyingBehaviourDone:
+  RTS
+
+;;;;;;;;;;;
+
 EnemyAliveBehaviour:
  
-   LDA enemies+$1, x
+   LDA enemies+$6, x
    
-   ;CMP #$EF
-   ;BCS EnemyAliveContinue
+   CMP #$EF
+   BCC EnemyAliveContinue
    
+   LDA #STATE_ENEMY_OFF_SCREEN
+   STA enemies+$7, x
    
-   
-   ;JMP EnemyAliveBehaviourDone
+   JMP EnemyAliveBehaviourDone
    
    EnemyAliveContinue:
    ; for this behaviour, go in circles until halfway down the screen; then just go normal like
@@ -457,6 +532,19 @@ EnemyAliveBehaviour:
 
 ;;;;;;;;;;;
 
+EnemyOffScreenBehaviour:
+
+  JSR ExpireEnemy
+
+  LDA #STATE_ENEMY_REMOVE
+  STA enemies+$7, x
+
+  INC enemiesNeedCleaning
+  
+  RTS
+
+;;;;;;;;;;;
+
 DoEnemyBehaviour:
   JSR UpdateEnemyFire  ; update any existing bullets
 
@@ -482,7 +570,23 @@ DoEnemyBehaviour:
   
     DyingStateCheck:
     
-    ;CMP #STATE_ENEMY_DYING
+    CMP #STATE_ENEMY_DYING
+    BNE OffScreenStateCheck
+    
+    JSR EnemyDyingBehaviour
+    
+    JMP EnemyStateLoopCheck
+    
+    OffScreenStateCheck:
+    
+    CMP #STATE_ENEMY_OFF_SCREEN
+    BNE DeadStateCheck
+    
+    JSR EnemyOffScreenBehaviour
+    
+    JMP EnemyStateLoopCheck
+    
+    DeadStateCheck:
     
     CMP #STATE_ENEMY_DEAD
     BNE EnemyStateLoopCheck
@@ -755,64 +859,7 @@ UpdateAliveEnemy:
 ; TODO: Explosions are currently tied to enemy index (8 as opposed to 4) and this probably needs changing.
 
 UpdateDyingEnemy:
-  LDA enemies, x
-  CMP #$FE
-  BNE InitEnemyExplosion
-  
-  ; only allow the explosion animation to go for so long...
-  LDA enemyExplosions+$2, x
-  CMP #MAX_EXPLOSION_FRAMES
-  BNE UpdateDyingEnemyContinue
-  
-  ; if we're at the max explosion count, set this enemy as dead
-  LDA #STATE_ENEMY_DEAD
-  STA enemies+$7, x
-  
-  JMP UpdateDyingEnemyDone
-  
-  UpdateDyingEnemyContinue:
-  
-  DEC enemyExplosions+$3, x
-  LDA enemyExplosions+$3, x
-  
-  BNE UpdateDyingEnemyDone
-  
-  ; increase the frame counter and reset the frame counter delay
-  INC enemyExplosions+$2, x
-  LDA #EXPLOSION_FRAME_DELAY
-  STA enemyExplosions+$3, x  
-  
-  JMP UpdateDyingEnemyDone
-  
-  ; init the explosion
-  InitEnemyExplosion:
-  
-  LDA enemies+$5, x
-  CLC
-  ADC #$04
-  STA enemyExplosions, x
-  
-  LDA enemies+$6, x
-  CLC
-  ADC #$04
-  STA enemyExplosions+$1, x
-  
-  LDA #$00
-  STA enemyExplosions+$2, x
-  
-  LDA #EXPLOSION_FRAME_DELAY
-  STA enemyExplosions+$3, x
-  
-    LDA #$FE
-    STA enemies, x
-    STA enemies+$1, x
-    STA enemies+$2, x
-    STA enemies+$3, x
-    STA enemies+$4, x
-    STA enemies+$5, x
-    STA enemies+$6, x
-  
-  INC enemyExplosionCount
+
   
     ; need to clear out enemy sprites          
     STA #ENEMY_SPRITE, y
