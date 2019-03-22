@@ -14,9 +14,9 @@ ENUM $0030
 
   tempPos: .dsb 1
   tempTrigAmount: .dsb 1
-  maxIndex: .word 1
   tempBVar: .dsb 1
   enemiesNeedCleaning: .dsb 1
+  enemyDelay: .dsb 1
 ENDE
 
 ;;;;;;;;;;;
@@ -37,12 +37,17 @@ MAX_ENEMY_INDEX = $60
 EXPLOSION_FRAME_DELAY = $04
 MAX_EXPLOSION_FRAMES = $03
 MAX_EXPLOSION_INDEX = $30
+MIN_X_POS = $2B
+MAX_X_POS = $E8
 
 STATE_ENEMY_ALIVE = $01
 STATE_ENEMY_DYING = $02
 STATE_ENEMY_OFF_SCREEN = $03
 STATE_ENEMY_DEAD = $FE
 STATE_ENEMY_REMOVE = $FD
+
+ENEMY_VALUE = #$64 ; 100
+
 ;;;;;;;;;;;;;
 
 InitiEnemyVars:
@@ -57,6 +62,7 @@ InitiEnemyVars:
   STA enemyBulletIndex
   STA enemyExplosionCount
   STA enemiesNeedCleaning
+  STA enemyDelay
   
   LDA #$00
   LDX #$00
@@ -142,7 +148,22 @@ GenerateRandomXPos:
     
     ; modded number
     PLA
-    STA tempBVar
+    
+    ; let's make sure it's within a decent range
+    CMP #MIN_X_POS
+    BCS CheckMaxX
+    
+    LDA #MIN_X_POS  
+    JMP SaveRandomXPos
+    
+    CheckMaxX:
+      CMP #MAX_X_POS
+      BCC SaveRandomXPos
+      
+      LDA #MAX_X_POS
+
+    SaveRandomXPos:
+      STA tempBVar
     
     ; still need to fetch x register since we used it in mod
     PLA
@@ -162,8 +183,6 @@ GenerateRandomYPos:
     PHA
     
     LDA seed
-    ;CLC
-    ;ADC #$20
     
     PHA
     
@@ -194,6 +213,23 @@ InitEnemies:
   LDY #$00
   
   InitEnemiesLoop:
+    JSR InitEnemy
+  
+    JSR IncEnemyIndexX
+        
+    INY
+    
+    CPY enemyCount
+    BNE InitEnemiesLoop
+    
+    ; save the last index (actually just past)
+    STX enemyIndex
+    
+  RTS
+
+;;;;;;;;;;;;;
+
+InitEnemy: 
     LDA #ATTACK_DELAY
     STA enemies+$3, x
   
@@ -208,23 +244,16 @@ InitEnemies:
     LDA tempBVar        
 
     STA enemies, x  ; x-coordinate
-    STA enemies+$5, x
-    STA enemies+$2, x  
+    STA enemies+$5, x      
     STA enemies+$4, x
+    
+    ; degrees
+    LDA #$00
+    STA enemies+$2, x
       
     LDA #STATE_ENEMY_ALIVE
     STA enemies+$7, x
   
-    JSR IncEnemyIndexX
-        
-    INY
-    
-    CPY enemyCount
-    BNE InitEnemiesLoop
-    
-    ; save the last index (actually just past)
-    STX enemyIndex
-    
   RTS
 
 ;;;;;;;;;;;;;
@@ -271,7 +300,12 @@ CheckPlayerBulletCollision:
     ADC #$08+$10-1
     BCC CheckNextPlayerBulletCollision
     
-    ; location of old "mark enemy as dead"
+    ; collision!
+
+    LDA score
+    CLC
+    ADC #ENEMY_VALUE
+    STA score
         
     LDA #STATE_ENEMY_DYING
     STA enemies+$7, y
@@ -545,7 +579,50 @@ EnemyOffScreenBehaviour:
 
 ;;;;;;;;;;;
 
+EnemySpawnCheck:
+
+  DEC enemyDelay
+  BMI ResetEnemyDelay
+  BEQ SpawnEnemy
+  
+  JMP EnemySpawnCheckEnd
+  
+  SpawnEnemy:
+    LDX enemyIndex
+    
+    JSR InitEnemy
+    
+    ; reset the y-coordinate (centre and actual)
+    LDA #$00
+    STA enemies+$1, x
+    STA enemies+$6, x
+    
+    JSR IncEnemyIndexX
+    STX enemyIndex
+    
+    INC enemyCount  
+
+    JMP EnemySpawnCheckEnd
+  
+  ResetEnemyDelay:
+    JSR RNG
+    LDA seed
+    STA enemyDelay
+  
+  EnemySpawnCheckEnd:
+    RTS
+
+;;;;;;;;;;;
+
 DoEnemyBehaviour:
+  LDA enemyCount
+  CMP #NUM_ENEMIES_L1
+  BCS SkipEnemySpawnCheck
+  
+  JSR EnemySpawnCheck
+  
+  SkipEnemySpawnCheck:
+  
   JSR UpdateEnemyFire  ; update any existing bullets
 
   JSR CheckPlayerBulletCollision

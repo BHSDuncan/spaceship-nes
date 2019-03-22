@@ -11,6 +11,7 @@ ENUM $000A
   engineFlickerDelay: dsb 1
   playerState: .dsb 1
   frameCounter: .dsb 1
+  score: .
   
   needsSpriteUpdate: .dsb 1
 ENDE
@@ -57,6 +58,7 @@ InitPlayerVars:
   STA bulletCount 
   STA playerShootDelay
   STA needsSpriteUpdate
+  STA score
   
   LDA #$80
   STA playerX
