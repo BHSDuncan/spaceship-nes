@@ -1,7 +1,7 @@
 ;;;;;;;;;;;;;;
  
 ; variables
-ENUM $0030
+ENUM $002E
   enemies: .dsb 96   ; (centreX, centreY, degrees, attackDelay, numFired, actualX, actualY, state) do this similar to bullets (8 bytes x 12 enemies)
   enemyBullets: .dsb 72 ; (x, y, tile, palette, frameCounter, enemyIndex) => 6 bytes x 12 bullets)
   enemyExplosions: .dsb 48 ; (x, y, frame, frameDelay) => (4 bytes x 12 enemies)
@@ -46,7 +46,7 @@ STATE_ENEMY_OFF_SCREEN = $03
 STATE_ENEMY_DEAD = $FE
 STATE_ENEMY_REMOVE = $FD
 
-ENEMY_VALUE = #$64 ; 100
+ENEMY_POINT_VALUE = #$64 ; 100
 
 ;;;;;;;;;;;;;
 
@@ -304,7 +304,7 @@ CheckPlayerBulletCollision:
 
     LDA score
     CLC
-    ADC #ENEMY_VALUE
+    ADC #ENEMY_POINT_VALUE
     STA score
         
     LDA #STATE_ENEMY_DYING
@@ -327,6 +327,8 @@ CheckPlayerBulletCollision:
 
 ;;;;;;;;;;;
 CleanEnemies:
+  ; TODO: There's a problem when this is called and there is more than one enemy "dying"--a sort of race condition. It's obvious that by cleaning up the enemies
+  ; data, it affects the state processing of the other dying enemies.
   LDX #$00 ; enemies index
   LDY #$00 ; new enemies index
 
@@ -405,18 +407,55 @@ ExpireEnemy:
 ;;;;;;;;;;
 
 EnemyDeadBehaviour:
+  ; for now, enemies' index is twice that of enemyExplosions, so, we need to halve it to get the explosion index
+  
+  ; skip any math if it's index 0
+  CPX #$00
+  BEQ DoUpdateDeadEnemy
+  
+  TXA
+  PHA
+  
+  LSR
+  
+  TAX
+  
+  DoUpdateDeadEnemy:
+  
+  LDA #$00
+  STA enemyExplosions, x
+  STA enemyExplosions+$1, x
+  STA enemyExplosions+$2, x
+  STA enemyExplosions+$3, x
+    
+  INC enemiesNeedCleaning
+  
+  CPX #$00
+  BEQ UpdateDeadEnemyDone
 
+  PLA
+  TAX
+
+  UpdateDeadEnemyDone:
+  
+  LDA #STATE_ENEMY_REMOVE
+  STA enemies+$7, x
+  
   RTS
 
 ;;;;;;;;;;;
 
 EnemyDyingBehaviour:
+  TXA
+  LSR
+  TAY
+
   LDA enemies, x
   CMP #$FE
   BNE InitEnemyExplosion
-  
-  ; only allow the explosion animation to go for so long...
-  LDA enemyExplosions+$2, x
+    
+  ; only allow the explosion animation to go for so long...  
+  LDA enemyExplosions+$2, y
   CMP #MAX_EXPLOSION_FRAMES
   BNE UpdateDyingEnemyContinue
   
@@ -424,21 +463,30 @@ EnemyDyingBehaviour:
   LDA #STATE_ENEMY_DEAD
   STA enemies+$7, x
   
-  JMP UpdateDyingEnemyDone
-  
+  JMP EnemyDyingBehaviourDone
+    
   UpdateDyingEnemyContinue:
   
-  DEC enemyExplosions+$3, x
-  LDA enemyExplosions+$3, x
+  ;DEC enemyExplosions+$3, y
+  LDA enemyExplosions+$3, y
+  SEC
+  SBC #$01
+  STA enemyExplosions+$3, y
+  ;LDA enemyExplosions+$3, y
   
   BNE EnemyDyingBehaviourDone
   
   ; increase the frame counter and reset the frame counter delay
-  INC enemyExplosions+$2, x
-  LDA #EXPLOSION_FRAME_DELAY
-  STA enemyExplosions+$3, x  
+  ;INC enemyExplosions+$2, y
+  LDA enemyExplosions+$2, y
+  CLC
+  ADC #$01
+  STA enemyExplosions+$2, y
   
-  JMP UpdateDyingEnemyDone
+  LDA #EXPLOSION_FRAME_DELAY
+  STA enemyExplosions+$3, y  
+  
+  JMP EnemyDyingBehaviourDone
   
   ; init the explosion
   InitEnemyExplosion:
@@ -446,18 +494,18 @@ EnemyDyingBehaviour:
   LDA enemies+$5, x
   CLC
   ADC #$04
-  STA enemyExplosions, x
+  STA enemyExplosions, y
   
   LDA enemies+$6, x
   CLC
   ADC #$04
-  STA enemyExplosions+$1, x
+  STA enemyExplosions+$1, y
   
   LDA #$00
-  STA enemyExplosions+$2, x
+  STA enemyExplosions+$2, y
   
   LDA #EXPLOSION_FRAME_DELAY
-  STA enemyExplosions+$3, x
+  STA enemyExplosions+$3, y
   
   JSR ExpireEnemy
   
@@ -680,6 +728,9 @@ DoEnemyBehaviour:
     JMP EnemyStateLoop
      
   DoEnemyBehaviourDone:
+  
+  JSR CleanEnemies
+  
   RTS
 
 ;;;;;;;;;;;;
@@ -937,6 +988,7 @@ UpdateAliveEnemy:
 
 UpdateDyingEnemy:
 
+    LDA #$FE
   
     ; need to clear out enemy sprites          
     STA #ENEMY_SPRITE, y
@@ -965,18 +1017,9 @@ UpdateDyingEnemy:
     RTS
 ;;;;;;;;;;;
 
-UpdateDeadEnemy:  
-  LDA #$00
-  STA enemyExplosions, x
-  STA enemyExplosions+$1, x
-  STA enemyExplosions+$2, x
-  STA enemyExplosions+$3, x
-  
-  LDA #STATE_ENEMY_REMOVE
-  STA enemies+$7, x
-  
-  INC enemiesNeedCleaning
+UpdateDeadEnemy:
 
+  
   RTS
 
 ;;;;;;;;;;;
@@ -1081,7 +1124,7 @@ UpdateEnemySprites:
   JMP UpdateEnemySpritesRTS
   
   CleanEnemiesJump:
-    JSR CleanEnemies
+    ;JSR CleanEnemies
     JSR CleanEnemySprites
   
   UpdateEnemySpritesRTS:
@@ -1302,7 +1345,7 @@ enemySprites:
   .db $00, $12, $03, $00   ;sprite 2
   .db $00, $13, $03, $00   ;sprite 3
 
-   ;; bullets"
+   ;; "bullets"
    .db $00, $14, $00, $00
    .db $00, $16, $00, $00
    .db $00, $18, $00, $00

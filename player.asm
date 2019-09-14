@@ -11,7 +11,7 @@ ENUM $000A
   engineFlickerDelay: dsb 1
   playerState: .dsb 1
   frameCounter: .dsb 1
-  score: .
+  score: .dsb 1
   
   needsSpriteUpdate: .dsb 1
 ENDE
@@ -703,13 +703,13 @@ ReadController1Loop:
  playerSprites:
      ;vert tile attr horiz
 
-  ;; ship
-  .db $D5, $00, $00, $80   ;sprite 0
-  .db $D5, $01, $00, $88   ;sprite 1
-  .db $DD, $02, $00, $80   ;sprite 2
-  .db $DD, $03, $00, $88   ;sprite 3
-  .db $E5, $04, $00, $80   ;sprite 4
-  .db $E5, $05, $00, $88   ;sprite 5
+  ; ship 
+  .db $D5, $00, $00, $80   ;sprite 1
+  .db $D5, $01, $00, $88   ;sprite 2
+  .db $DD, $02, $00, $80   ;sprite 3
+  .db $DD, $03, $00, $88   ;sprite 4
+  .db $E5, $04, $00, $80   ;sprite 5
+  .db $E5, $05, $00, $88   ;sprite 6
 
   ;; engine
   .db $ED, $06, $01, $84   ;sprite 6

@@ -20,7 +20,8 @@ ENUM $0001  ;;start variables at ram location 1; at 0, setting #$02 to certain v
   sleeping: .dsb 1
   
   needDMA: .dsb 1
-  needDraw: .dsb 1  
+  needDraw: .dsb 1
+ 
 ENDE
 
 ;; constants
@@ -29,6 +30,7 @@ STATEPLAYING   = $01
 STATEGAMEOVER  = $02  
 
 DRAW_DELAY = $03
+SCROLL_START = $EF
 
 ;;;;;;;;;;;;;;;;;;
 
@@ -198,7 +200,7 @@ LoadAttribute2Loop:
 
   ;LDA #%00011000   ; enable sprites, enable background, no clipping on left side
   ;STA $2001
-
+  
 ;;;;;;;;;;;;;;;;;;;;
 
 
@@ -213,7 +215,7 @@ InitVars:
   STA seed  
   STA nametable  
   
-  LDA #$EF
+  LDA #SCROLL_START
   STA scroll
   
   LDA #DRAW_DELAY
@@ -263,7 +265,9 @@ DoFrame:
   
   GameEngineDone: 
   
-  JSR UpdateSprites  
+  JSR UpdateSprites
+  ;LDA #$01
+  ;STA needDMA  
 
   JSR WaitFrame
 
@@ -311,16 +315,30 @@ NMI:
 
   BIT $2002
 
-LDA needDraw
-BEQ DMACheck
+  DMACheck:
+  
+  LDA needDMA
+  BEQ DrawCheck
+  
+  LDA #$00
+  STA needDMA
 
-  DEC scroll       ; add one to our scroll variable each frame
+  STA $2003       
+  LDA #$02
+  STA $4014       ; sprite DMA from $0200
+
+DrawCheck:
+
+LDA needDraw
+BEQ RestoreRegisters
+
+  DEC scroll       ; subtract one from our scroll variable each frame
 NTSwapCheck:
   LDA scroll       ; check if the scroll just wrapped from 255 to 0
   CMP #$FF
   BNE NTSwapCheckDone
   
-  LDA #$EF
+  LDA #SCROLL_START
   STA scroll
   
 NTSwap:
@@ -333,36 +351,24 @@ NTSwapCheckDone:
   LDA #$00
   STA $2006        ; clean up PPU address registers
   STA $2006
-    
-  LDA #$00         ; no horiz scrolling
+  
+  LDA #$00
   STA $2005        ; write the horizontal scroll count register
 
   LDA scroll
   STA $2005
-    
+  
   ;;This is the PPU clean up section, so rendering the next frame starts properly.
   LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
   ORA nametable    ; select correct nametable for bit 0
   STA $2000
   
-  LDA #%00011000   ; enable sprites, enable background, no clipping on left side
+  LDA #%00011000   ; enable sprites, enable background, clipping on left side
   STA $2001
 
   LDA #$00
   STA needDraw
-
-  DMACheck:
-  
-  LDA needDMA
-  BEQ RestoreRegisters
-  
-  LDA #$00
-  STA needDMA
-
-  STA $2003       
-  LDA #$02
-  STA $4014       ; sprite DMA from $0200
-  
+    
   RestoreRegisters:
   LDA #$00
   STA sleeping
