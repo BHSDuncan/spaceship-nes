@@ -1,3 +1,7 @@
+; TODO: Need to rework how enemies are tracked, especially after destruction.
+; Idea: Give each enemy a position in the array, but still track enemy 'count' for a little optimization when looping through enemies.
+; Having a state machine that applies to each enemy (as opposed to treating all enemies as a whole) has proven a bit cumbersome in assembly, but, is still doable, I think.
+
 ;;;;;;;;;;;;;;
  
 ; variables
@@ -43,8 +47,10 @@ MAX_X_POS = $E8
 STATE_ENEMY_ALIVE = $01
 STATE_ENEMY_DYING = $02
 STATE_ENEMY_OFF_SCREEN = $03
+STATE_ENEMY_CLEANUP = $04
 STATE_ENEMY_DEAD = $FE
 STATE_ENEMY_REMOVE = $FD
+STATE_ENEMY_WAITING = $FC
 
 ENEMY_POINT_VALUE = #$64 ; 100
 
@@ -66,6 +72,7 @@ InitiEnemyVars:
   
   LDA #$00
   LDX #$00
+  
   InitEnemyBulletsLoop:
     STA enemyBullets, x
     INX
@@ -262,7 +269,7 @@ InitEnemy:
 LoadEnemySprites:
   LDX #$00              ; start at 0
 LoadEnemySpritesLoop:
-  LDA enemySprites, x        ; load data from address (sprites +  x)
+  LDA enemySprites, x        ; load data from address (sprites + x)
   STA #ENEMY_SPRITE, x          ; store into RAM address ($0200 + x)
   INX                   ; X = X + 1
   CPX #$10              ; Compare X to hex $18, decimal 24
@@ -326,71 +333,6 @@ CheckPlayerBulletCollision:
     RTS
 
 ;;;;;;;;;;;
-CleanEnemies:
-  ; TODO: There's a problem when this is called and there is more than one enemy "dying"--a sort of race condition. It's obvious that by cleaning up the enemies
-  ; data, it affects the state processing of the other dying enemies.
-  LDX #$00 ; enemies index
-  LDY #$00 ; new enemies index
-
-  CleanEnemiesLoop:
-    CPX #MAX_ENEMY_INDEX
-    BEQ CleanEnemiesDone
-    
-    LDA enemies+$7, x
-    CMP #STATE_ENEMY_REMOVE
-    BEQ RemoveEnemy
-    
-    LDA enemies, x
-    STA enemies, y
-
-    LDA enemies+$1, x
-    STA enemies+$1, y
-
-    LDA enemies+$2, x
-    STA enemies+$2, y
-
-    LDA enemies+$3, x
-    STA enemies+$3, y
-
-    LDA enemies+$4, x
-    STA enemies+$4, y
-
-    LDA enemies+$5, x
-    STA enemies+$5, y
-
-    LDA enemies+$6, x
-    STA enemies+$6, y
-
-    LDA enemies+$7, x
-    STA enemies+$7, y
-    
-    JSR IncEnemyIndexY
-        
-    JMP CheckNextEnemy
-    
-    RemoveEnemy:
-      DEC enemyExplosionCount     
-    
-      DEC enemyCount
-      
-      DEC enemyIndex
-      DEC enemyIndex
-      DEC enemyIndex
-      DEC enemyIndex
-      DEC enemyIndex
-      DEC enemyIndex
-      DEC enemyIndex
-      DEC enemyIndex
-          
-    CheckNextEnemy:
-      JSR IncEnemyIndexX
-      
-      JMP CleanEnemiesLoop
-  
-  CleanEnemiesDone:
-    RTS
-
-;;;;;;;;;;
 ExpireEnemy:
 
     LDA #$FE
@@ -428,7 +370,7 @@ EnemyDeadBehaviour:
   STA enemyExplosions+$2, x
   STA enemyExplosions+$3, x
     
-  INC enemiesNeedCleaning
+  ;INC enemiesNeedCleaning
   
   CPX #$00
   BEQ UpdateDeadEnemyDone
@@ -438,9 +380,9 @@ EnemyDeadBehaviour:
 
   UpdateDeadEnemyDone:
   
-  LDA #STATE_ENEMY_REMOVE
+  LDA #STATE_ENEMY_CLEANUP
   STA enemies+$7, x
-  
+
   RTS
 
 ;;;;;;;;;;;
@@ -457,7 +399,7 @@ EnemyDyingBehaviour:
   ; only allow the explosion animation to go for so long...  
   LDA enemyExplosions+$2, y
   CMP #MAX_EXPLOSION_FRAMES
-  BNE UpdateDyingEnemyContinue
+  BNE ClearEnemySpriteContinue
   
   ; if we're at the max explosion count, set this enemy as dead
   LDA #STATE_ENEMY_DEAD
@@ -465,54 +407,54 @@ EnemyDyingBehaviour:
   
   JMP EnemyDyingBehaviourDone
     
-  UpdateDyingEnemyContinue:
+  ClearEnemySpriteContinue:
   
-  ;DEC enemyExplosions+$3, y
-  LDA enemyExplosions+$3, y
-  SEC
-  SBC #$01
-  STA enemyExplosions+$3, y
-  ;LDA enemyExplosions+$3, y
-  
-  BNE EnemyDyingBehaviourDone
-  
-  ; increase the frame counter and reset the frame counter delay
-  ;INC enemyExplosions+$2, y
-  LDA enemyExplosions+$2, y
-  CLC
-  ADC #$01
-  STA enemyExplosions+$2, y
-  
-  LDA #EXPLOSION_FRAME_DELAY
-  STA enemyExplosions+$3, y  
-  
-  JMP EnemyDyingBehaviourDone
-  
+	  ;DEC enemyExplosions+$3, y
+	  LDA enemyExplosions+$3, y
+	  SEC
+	  SBC #$01
+	  STA enemyExplosions+$3, y
+	  ;LDA enemyExplosions+$3, y
+	  
+	  BNE EnemyDyingBehaviourDone
+	  
+	  ; increase the frame counter and reset the frame counter delay
+	  ;INC enemyExplosions+$2, y
+	  LDA enemyExplosions+$2, y
+	  CLC
+	  ADC #$01
+	  STA enemyExplosions+$2, y
+	  
+	  LDA #EXPLOSION_FRAME_DELAY
+	  STA enemyExplosions+$3, y  
+	  
+	  JMP EnemyDyingBehaviourDone
+	  
   ; init the explosion
   InitEnemyExplosion:
-  
-  LDA enemies+$5, x
-  CLC
-  ADC #$04
-  STA enemyExplosions, y
-  
-  LDA enemies+$6, x
-  CLC
-  ADC #$04
-  STA enemyExplosions+$1, y
-  
-  LDA #$00
-  STA enemyExplosions+$2, y
-  
-  LDA #EXPLOSION_FRAME_DELAY
-  STA enemyExplosions+$3, y
-  
-  JSR ExpireEnemy
-  
-  INC enemyExplosionCount
+	  
+	  LDA enemies+$5, x
+	  CLC
+	  ADC #$04
+	  STA enemyExplosions, y
+	  
+	  LDA enemies+$6, x
+	  CLC
+	  ADC #$04
+	  STA enemyExplosions+$1, y
+	  
+	  LDA #$00
+	  STA enemyExplosions+$2, y
+	  
+	  LDA #EXPLOSION_FRAME_DELAY
+	  STA enemyExplosions+$3, y
+	  
+	  JSR ExpireEnemy
+	  
+	  INC enemyExplosionCount
   
   EnemyDyingBehaviourDone:
-  RTS
+  	RTS
 
 ;;;;;;;;;;;
 
@@ -621,10 +563,31 @@ EnemyOffScreenBehaviour:
   LDA #STATE_ENEMY_REMOVE
   STA enemies+$7, x
 
-  INC enemiesNeedCleaning
+  ;INC enemiesNeedCleaning
   
   RTS
 
+;;;;;;;;;;;
+
+FindFirstWaitingEnemy:
+
+  LDX #$00
+  
+  FindFirstWaitingEnemyLoop:
+    CPX enemyIndex
+    BEQ FindFirstWaitingEnemyDone
+  
+    LDA enemies+$7, x
+    CMP #STATE_ENEMY_WAITING
+    BEQ FindFirstWaitingEnemyDone
+    
+    JSR IncEnemyIndexX
+    
+    JMP FindFirstWaitingEnemyLoop
+
+  FindFirstWaitingEnemyDone:
+    RTS
+    
 ;;;;;;;;;;;
 
 EnemySpawnCheck:
@@ -636,7 +599,9 @@ EnemySpawnCheck:
   JMP EnemySpawnCheckEnd
   
   SpawnEnemy:
-    LDX enemyIndex
+    ; need to find the first available position to 'spawn' a new enemy
+    ;LDX enemyIndex
+	JSR FindFirstWaitingEnemy  ; value is stored in X
     
     JSR InitEnemy
     
@@ -645,8 +610,8 @@ EnemySpawnCheck:
     STA enemies+$1, x
     STA enemies+$6, x
     
-    JSR IncEnemyIndexX
-    STX enemyIndex
+    ;JSR IncEnemyIndexX
+    ;STX enemyIndex
     
     INC enemyCount  
 
@@ -671,17 +636,17 @@ DoEnemyBehaviour:
   
   SkipEnemySpawnCheck:
   
-  JSR UpdateEnemyFire  ; update any existing bullets
-
-  JSR CheckPlayerBulletCollision
-  
-  LDA enemyCount
-  BEQ DoEnemyBehaviourDone
-  
-  ; this can/should be done outside of a state check since it can exist independent of an enemy
-  JSR EnemyBulletUpdate
-  
-  LDX #$00
+	  JSR UpdateEnemyFire  ; update any existing bullets
+	
+	  JSR CheckPlayerBulletCollision
+	  
+	  LDA enemyCount
+	  BEQ DoEnemyBehaviourDone
+	  
+	  ; this can/should be done outside of a state check since it can exist independent of an enemy
+	  JSR EnemyBulletUpdate
+	  
+	  LDX #$00
   
   EnemyStateLoop:
     LDA enemies+$7, x  ; state
@@ -714,9 +679,21 @@ DoEnemyBehaviour:
     DeadStateCheck:
     
     CMP #STATE_ENEMY_DEAD
-    BNE EnemyStateLoopCheck
+    BNE RemoveStateCheck
     
     JSR EnemyDeadBehaviour
+    
+    JMP EnemyStateLoopCheck
+    
+    RemoveStateCheck:
+    
+    CMP #STATE_ENEMY_REMOVE
+    BNE EnemyStateLoopCheck
+    
+    DEC enemyCount
+    
+    LDA #STATE_ENEMY_WAITING
+    STA enemies+$7, x
     
     EnemyStateLoopCheck:
 
@@ -729,7 +706,7 @@ DoEnemyBehaviour:
      
   DoEnemyBehaviourDone:
   
-  JSR CleanEnemies
+  ;JSR CleanEnemies
   
   RTS
 
@@ -986,7 +963,12 @@ UpdateAliveEnemy:
 
 ; TODO: Explosions are currently tied to enemy index (8 as opposed to 4) and this probably needs changing.
 
-UpdateDyingEnemy:
+ClearEnemySprite:
+
+	; can probably optimize further by introudcing a new state?
+	LDA #ENEMY_SPRITE, y
+	CMP #$FE
+	BEQ ClearEnemySpriteDone
 
     LDA #$FE
   
@@ -1013,13 +995,27 @@ UpdateDyingEnemy:
   
     INC needDMA
  
-  UpdateDyingEnemyDone:
+  ClearEnemySpriteDone:
     RTS
 ;;;;;;;;;;;
 
-UpdateDeadEnemy:
+UpdateCleanupEnemy:
 
-  
+    TXA
+    PHA
+    TYA
+    PHA    
+    
+    JSR DrawExplosion
+
+	PLA
+	TAY
+	PLA
+	TAX
+	
+	LDA #STATE_ENEMY_REMOVE
+    STA enemies+$7, x
+    	
   RTS
 
 ;;;;;;;;;;;
@@ -1031,7 +1027,6 @@ UpdateEnemySprites:
   LDA enemyCount
   BNE UpdateEnemySpritesLoop 
   
-  ;JMP CleanEnemySprites
   JMP UpdateEnemyNext  
   
   UpdateEnemySpritesLoop:
@@ -1047,19 +1042,41 @@ UpdateEnemySprites:
     
     LDA enemies+$7, x ; state
     CMP #STATE_ENEMY_DYING
-    BNE UpdateEnemyCheckDeadState
+    BNE UpdateEnemyCheckCleanupState
     
-    JSR UpdateDyingEnemy    
+    JSR ClearEnemySprite
+    
+    TXA
+    PHA
+    TYA
+    PHA    
+    
+    JSR DrawExplosion
+
+	PLA
+	TAY
+	PLA
+	TAX
+	    
+    JMP UpdateEnemySpritesLoopCheck
+
+    UpdateEnemyCheckCleanupState:
+    
+    LDA enemies+$7, x ; state
+    CMP #STATE_ENEMY_CLEANUP
+    BNE UpdateEnemyCheckOffScreenState
+    
+    JSR UpdateCleanupEnemy
     
     JMP UpdateEnemySpritesLoopCheck
 
-    UpdateEnemyCheckDeadState:
-    
+	UpdateEnemyCheckOffScreenState:
+
     LDA enemies+$7, x ; state
-    CMP #STATE_ENEMY_DEAD
+    CMP #STATE_ENEMY_OFF_SCREEN
     BNE UpdateEnemySpritesLoopCheck
     
-    JSR UpdateDeadEnemy
+	JSR ClearEnemySprite
 
     UpdateEnemySpritesLoopCheck:
     
@@ -1074,110 +1091,97 @@ UpdateEnemySprites:
     CPX enemyIndex
     BNE UpdateEnemySpritesLoopJump
     
-    ;JMP CleanEnemySprites
     JMP UpdateEnemyNext        
     
   UpdateEnemySpritesLoopJump:
     JMP UpdateEnemySpritesLoop
     
-  ;CleanEnemySprites:
-      ; need to clear out enemy sprites that are dead
-  ;    CPX #MAX_ENEMY_INDEX
-  ;    BEQ UpdateEnemySpritesDone
-          
-  ;    CleanEnemySpritesLoop:
-  ;    STY tempBVar
-  ;    TYA
-  ;    CLC
-  ;    ADC #$0F
-  ;    STA tempBVar
-            
-  ;    ClearEnemySpriteLoop:
-  ;      STA #ENEMY_SPRITE, y
-  ;      INY
-        
-  ;      CPY tempBVar
-  ;      BEQ ClearEnemySpritesLoopDone
-        
-  ;      JMP ClearEnemySpriteLoop
-    
-  ;    ClearEnemySpritesLoopDone:
-           
-      ;JSR IncEnemyIndexX
-            
-      ;CPX #MAX_ENEMY_INDEX
-      ;BEQ UpdateEnemySpritesDone
-    
-      ;JMP CleanEnemySpritesLoop
-
   UpdateEnemyNext:
     
   UpdateEnemySpritesDone:
   
-  JSR DrawExplosions
+  ;JSR DrawExplosions
   
   JSR DrawEnemyFire
-
-  LDA enemiesNeedCleaning
-  BNE CleanEnemiesJump
-  
-  JMP UpdateEnemySpritesRTS
-  
-  CleanEnemiesJump:
-    ;JSR CleanEnemies
-    JSR CleanEnemySprites
   
   UpdateEnemySpritesRTS:
     RTS
     
 ;;;;;;;;;;;;;;;;;;;;;
+DrawExplosion:
+	INC needDMA
+	
+	; explosion index is half of enemies index; we also need explosion number her for the purpose of addressing the right explosion sprite
+	TXA
 
-CleanEnemySprites:
-  LDX #$00
-  LDA #$00
+	LSR
+	
+	TAX
+	
+	LSR
+	LSR
+	
+	; now need to get appropriate offset for addressing explosion sprite
+	STA tempBVar
+	LDA #$00
+	LDY #$00	
+	
+	DEGetExplosionIndexLoop:
+	  CMP tempBVar
+	  BEQ DEGetExplosionIndexLoopDone
+
+	  INY
+	  INY
+	  INY
+	  INY
+	  
+	  CLC
+	  ADC #$01
+	  
+	  JMP DEGetExplosionIndexLoop
+
+	DEGetExplosionIndexLoopDone:
+	
+    ; x
+    LDA enemyExplosions, x
+    STA #ENEMY_EXPLOSION_SPRITE+$3, y  
   
-  CESAdvanceToPosition:
-    CLC
-    ADC #ENEMY_META_SPRITE_INTERVAL
-    INX
-    CPX enemyCount
-    BNE CESAdvanceToPosition
-  
-  TAY  
-  LDX #$00   
-  
-  CleanEnemySpritesLoop:
-      STY tempBVar
-      TYA
-      CLC
-      ADC #$0F
-      STA tempBVar
-      
-      LDA #$FE
-      
-      CleanEnemySpritesInnerLoop:
-        STA #ENEMY_SPRITE, y
-        INY
-        
-        CPY tempBVar
-        BEQ CleanEnemySpritesInnerLoopDone
-        
-        JMP CleanEnemySpritesInnerLoop
+    ; y
+    LDA enemyExplosions+$1, x
+    STA #ENEMY_EXPLOSION_SPRITE, y
     
-      CleanEnemySpritesInnerLoopDone:      
-        INX
-        CPX enemiesNeedCleaning
-        BEQ CleanEnemySpritesDone
+    ; tile
+    TXA
+    PHA
     
-        JMP CleanEnemySpritesLoop
+    LDA enemyExplosions+$2, x
+    
+    ; going to modulo the counter to get the frame    
+    PHA
+    
+    LDA #$04
+    PHA
+    
+    JSR Mod
+    
+    ; get the return value and also clean up
+    PLA        
+    PLA
+    TAX
+    
+    LDA explosionAnim, x
+    STA #ENEMY_EXPLOSION_SPRITE+$1, y 
+    
+    PLA
+    TAX
 
-  CleanEnemySpritesDone:
-  
-  LDA #$00
-  STA enemiesNeedCleaning
-  RTS
+    ; attrs
+    LDA #$01 ; just set the palette
+    STA #ENEMY_EXPLOSION_SPRITE+$2, y
+    
+    RTS
 
-;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;
 
 DrawExplosions:
   
