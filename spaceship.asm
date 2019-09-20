@@ -298,7 +298,7 @@ InitVars:
   STA $2001
 
 DoFrame:
-    JSR ReadController1  ;;get the current button data for player 1
+  JSR ReadController1  ;;get the current button data for player 1
   ;JSR ReadController2  ;;get the current button data for player 2
   
   DEC scrollFlip
