@@ -19,9 +19,28 @@ ENUM $0001  ;;start variables at ram location 1; at 0, setting #$02 to certain v
   nametable: .dsb 1
   sleeping: .dsb 1
   
+  displayListReady: .dsb 1
+  displayListIndex: .dsb 1
+  displayListStrLen: .dsb 1
+  
+  scoreSpriteAddr: 
+  	scoreSpriteAddrL: .dsb 1
+  	scoreSpriteAddrH: .dsb 1
+    
   needDMA: .dsb 1
   needDraw: .dsb 1
+  
+  ; used as a 16-bit register comprised of a high-byte and low-byte
+  AX:
+  AL: .dsb 1
+  AH: .dsb 1
  
+ENDE
+
+ENUM $0300 ; try using this for "BSS"
+
+  displayList: .dsb 256
+
 ENDE
 
 ;; constants
@@ -31,6 +50,45 @@ STATEGAMEOVER  = $02
 
 DRAW_DELAY = $03
 SCROLL_START = $EF
+
+NUM_SCORE_DIGITS = 6
+
+SCORE_START_SPRITE = $02DC
+SCORE_START_HORIZ = $08
+;;;;;;;;;;;;;;;;;;
+
+; borrowed this idea from "furrykef" on GitHub
+MACRO DlBegin
+  LDA #$00
+  STA displayListReady 
+  LDX displayListIndex
+ENDM
+
+MACRO DlAddA
+  STA displayList, x
+  INX
+ENDM
+
+MACRO DlAddString string
+  LDY #$00
+  
+  DlAddStringLoop:
+	  LDA string, y
+	  DlAddA
+	  
+	  INY
+	  
+	  CPY displayListStrLen
+	  BNE DlAddStringLoop
+  
+ENDM 
+
+MACRO DlEnd
+  LDA #$01
+  STA displayListReady
+  STX displayListIndex
+  
+ENDM
 
 ;;;;;;;;;;;;;;;;;;
 
@@ -214,6 +272,8 @@ InitVars:
   LDA #$00
   STA seed  
   STA nametable  
+  STA displayListIndex
+  STA displayListReady
   
   LDA #SCROLL_START
   STA scroll
@@ -294,13 +354,21 @@ EnginePlaying:
   JSR HandlePlayerInput
   JSR DoPlayerBehaviour
   JSR DoEnemyBehaviour
-
+  JSR DrawScore
+  
   JMP GameEngineDone
 
 UpdateSprites:
   JSR UpdatePlayerSprites
   JSR UpdateEnemySprites
  
+  LDA displayListReady
+  BEQ SkipDlFlush
+    
+  JSR FlushDl  
+ 
+  SkipDlFlush:
+  
   RTS
 
 ;;;;;;;;;;;
@@ -384,7 +452,121 @@ NTSwapCheckDone:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 
-  .org $E000
+DrawScore:
+
+  DlBegin
+  
+  LDA #NUM_SCORE_DIGITS
+  STA displayListStrLen  
+  DlAddA
+  
+  LDA #<SCORE_START_SPRITE 
+  DlAddA
+  
+  LDA #>SCORE_START_SPRITE
+  DlAddA
+
+  DlAddString playerScore
+  
+  DlEnd
+
+  RTS
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+FlushDl:
+
+  LDX #$00
+  
+  LDA #SCORE_START_HORIZ
+  STA tempBVar
+  
+  FlushDlLoop:
+  
+    CPX displayListIndex
+    BEQ FlushDlEnd
+    
+    LDY displayList, x ; chunk size
+    INX
+    
+    LDA displayList, x ; starting sprite address (low byte)
+    STA scoreSpriteAddrL
+    INX
+
+    LDA displayList, x ; starting sprite address (high byte)
+    STA scoreSpriteAddrH
+    INX
+        
+    FlushDlCopyLoop:
+      TYA
+      PHA
+    
+      LDY #$00
+      
+      ; draw the text sprite
+
+	  ; vert 
+	  LDA #$0A
+	  STA (scoreSpriteAddr), y
+	  
+	  INY
+	  
+	  ; tile
+      LDA displayList, x
+      CLC
+      ADC #$30
+      STA (scoreSpriteAddr), y
+	  
+	  INY
+	  
+	  ; attr
+	  LDA #$00
+	  STA (scoreSpriteAddr), y
+	  
+	  INY
+	  
+	  ; horiz
+	  LDA tempBVar
+	  STA (scoreSpriteAddr), y
+
+	  CLC
+	  ADC #$08
+	  STA tempBVar
+	  
+	  ; increment the sprite location/info	  
+	  LDA scoreSpriteAddrL
+	  CLC
+	  ADC #$04
+	  STA scoreSpriteAddrL
+	  
+	  ; check for carry
+      LDA scoreSpriteAddrH
+      ADC #$00
+      STA scoreSpriteAddrH
+      	  	  
+	  ; restore y
+	  PLA
+	  TAY
+	  
+	  INX
+	  
+	  DEY
+	  
+	  BNE FlushDlCopyLoop
+	  BEQ FlushDlLoop
+	  
+  FlushDlEnd:
+  	LDA #$00
+  	STA displayListIndex
+  	STA displayListReady
+  	
+  	LDA #$01
+  	STA needDMA
+  	
+  RTS
+;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+.org $E000
   
 palette:
   .incbin "spaceship.dat"
@@ -402,8 +584,10 @@ bgattrs:
   .include "enemies.asm"
   .include "player.asm"
 
+; trying to implement unpacked BCD representation since the NES 6502 doesn't support BCD natively
+Points100: .db 0,0,0,1,0,0
 
-  .org $FFFA     ;first of the three vectors starts here
+.org $FFFA     ;first of the three vectors starts here
   .dw NMI        ;when an NMI happens (once per frame if enabled) the 
                    ;processor will jump to the label NMI:
   .dw RESET      ;when the processor first turns on or is reset, it will jump

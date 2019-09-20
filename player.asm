@@ -1,19 +1,23 @@
 ;; variables
-ENUM $000A
+ENUM $0011
   buttons1:   dsb 1  ; player 1 gamepad buttons, one bit per button
   playerX: dsb 1
   playerY: dsb 1
   playerShootSalvo: dsb 1
   playerShootDelay: dsb 1
-  bullets: dsb 24 ; 2 bytes per bullet to store (x,y)
+  bullets: dsb 12 ; 2 bytes per bullet to store (x,y)
   bulletCount: dsb 1
   bulletIndex: dsb 1  
   engineFlickerDelay: dsb 1
   playerState: .dsb 1
   frameCounter: .dsb 1
-  score: .dsb 1
   
   needsSpriteUpdate: .dsb 1
+  
+  pScoreH: .dsb 1 ; pointer to high-byte of score
+  pScoreL: .dsb 1 ; pointer to low-byte of score
+  playerScore: .dsb NUM_SCORE_DIGITS ; 6
+  
 ENDE
 
 ;; constants
@@ -21,11 +25,12 @@ PLAYER_SPRITE = $0200
 BULLET_SPRITE = $021C
 
 BULLET_SPEED = $08
-MAX_PLAYER_BULLETS = $0C
-MAX_SALVO = $04
+MAX_PLAYER_BULLETS = $06
+MAX_SALVO = $02
 SHOOT_DELAY = $08
-MAX_PLAYER_BULLETS_INDEX = $18
+MAX_PLAYER_BULLETS_INDEX = $0C
 ENGINE_FLICKER_DELAY = $06
+MIN_Y_POS_BULLET = $10
 
 STATE_PLAYER_ALIVE = #$01
 STATE_PLAYER_DYING = #$02
@@ -58,7 +63,20 @@ InitPlayerVars:
   STA bulletCount 
   STA playerShootDelay
   STA needsSpriteUpdate
-  STA score
+  
+  LDA #<playerScore
+  STA pScoreL
+  
+  LDA #>playerScore
+  STA pScoreH
+  
+  ; clear the score out
+  LDX #NUM_SCORE_DIGITS-1
+  
+  ClearScoreLoop:
+    STA playerScore, x
+    DEX
+    BPL ClearScoreLoop
   
   LDA #$80
   STA playerX
@@ -491,7 +509,9 @@ UpdatePlayerBullets:
    
     SEC
     SBC #BULLET_SPEED
-    BCC DestroyBullet ; if we've gone off the top of the screen, this bullet is history
+    
+    CMP #MIN_Y_POS_BULLET
+    BCC DestroyBullet ; if we've gone off the min Y of the screen as set, this bullet is history
 
     ; move the bullet forward
     STA bullets+$1, y

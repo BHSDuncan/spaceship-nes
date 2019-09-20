@@ -5,44 +5,45 @@
 ;;;;;;;;;;;;;;
  
 ; variables
-ENUM $002E
-  enemies: .dsb 96   ; (centreX, centreY, degrees, attackDelay, numFired, actualX, actualY, state) do this similar to bullets (8 bytes x 12 enemies)
-  enemyBullets: .dsb 72 ; (x, y, tile, palette, frameCounter, enemyIndex) => 6 bytes x 12 bullets)
-  enemyExplosions: .dsb 48 ; (x, y, frame, frameDelay) => (4 bytes x 12 enemies)
+ENUM $003C
+  enemies: .dsb 48   ; (centreX, centreY, degrees, attackDelay, numFired, actualX, actualY, state) do this similar to bullets (8 bytes x 6 enemies)
+  enemyBullets: .dsb 36 ; (x, y, tile, palette, frameCounter, enemyIndex) => 6 bytes x 6 bullets)
+  enemyExplosions: .dsb 24 ; (x, y, frame, frameDelay) => (4 bytes x 6 enemies)
   enemyCount: .dsb 1
   enemyIndex: .word 1
   enemyDegrees: .dsb 1
   enemyBulletCount: .dsb 1
-  enemyBulletIndex: .word 1
+  enemyBulletIndex: .dsw 1
   enemyExplosionCount: .dsb 1
 
   tempPos: .dsb 1
   tempTrigAmount: .dsb 1
   tempBVar: .dsb 1
-  enemiesNeedCleaning: .dsb 1
   enemyDelay: .dsb 1
 ENDE
 
 ;;;;;;;;;;;
 
 ; constants
-ENEMY_SPRITE = $025C
+ENEMY_SPRITE = $0234
 ENEMY_META_SPRITE_INTERVAL = $10
-ATTACK_SPRITE = $02AC
-ENEMY_EXPLOSION_SPRITE = $02DC
+ATTACK_SPRITE = $0294 
+ENEMY_EXPLOSION_SPRITE = $02C4
 NUM_ENEMIES_L1 = $03
 TRIG_CENTRE = $20
 ATTACK_DELAY = $0F
 ENEMY_BULLET_SPEED = $02
 MAX_TOTAL_ENEMY_BULLET_COUNT = $04
 MAX_ENEMY_BULLET_COUNT = $02
-MAX_ENEMY_BULLET_INDEX = $48
-MAX_ENEMY_INDEX = $60
+MAX_ENEMY_BULLET_INDEX = $28 ; $24, but should be one sprite past
+MAX_ENEMY_INDEX = $30
 EXPLOSION_FRAME_DELAY = $04
 MAX_EXPLOSION_FRAMES = $03
 MAX_EXPLOSION_INDEX = $30
 MIN_X_POS = $2B
 MAX_X_POS = $E8
+MIN_Y_POS_ENEMY = $09
+MAX_Y_POS_ENEMY = $20
 
 STATE_ENEMY_ALIVE = $01
 STATE_ENEMY_DYING = $02
@@ -51,8 +52,6 @@ STATE_ENEMY_CLEANUP = $04
 STATE_ENEMY_DEAD = $FE
 STATE_ENEMY_REMOVE = $FD
 STATE_ENEMY_WAITING = $FC
-
-ENEMY_POINT_VALUE = #$64 ; 100
 
 ;;;;;;;;;;;;;
 
@@ -67,7 +66,6 @@ InitiEnemyVars:
   STA enemyBulletCount
   STA enemyBulletIndex
   STA enemyExplosionCount
-  STA enemiesNeedCleaning
   STA enemyDelay
   
   LDA #$00
@@ -203,6 +201,23 @@ GenerateRandomYPos:
     
     ; modded number
     PLA
+    
+    CMP #MIN_Y_POS_ENEMY
+    BCS SkipMinY
+
+    LDA #MIN_Y_POS_ENEMY
+ 
+    JMP GenerateRandomYPosDone
+    
+    SkipMinY:
+    
+      CMP #MAX_Y_POS_ENEMY
+      BCC GenerateRandomYPosDone
+    
+      LDA #MAX_Y_POS_ENEMY
+    
+    GenerateRandomYPosDone:
+    
     STA tempBVar
     
     ; still need to fetch x register since we used it in mod
@@ -309,11 +324,28 @@ CheckPlayerBulletCollision:
     
     ; collision!
 
-    LDA score
-    CLC
-    ADC #ENEMY_POINT_VALUE
-    STA score
+    ;LDA score
+    ;CLC
+    ;ADC #ENEMY_POINT_VALUE
+    ;STA score
+
+	LDA #<Points100
+	STA AL
+	LDA #>Points100
+	STA AH
+	
+	TXA
+	PHA
+	TYA
+	PHA
         
+    JSR AddPoints
+    
+    PLA
+    TAY
+    PLA
+    TAX
+    
     LDA #STATE_ENEMY_DYING
     STA enemies+$7, y
     
@@ -370,8 +402,6 @@ EnemyDeadBehaviour:
   STA enemyExplosions+$2, x
   STA enemyExplosions+$3, x
     
-  ;INC enemiesNeedCleaning
-  
   CPX #$00
   BEQ UpdateDeadEnemyDone
 
@@ -563,8 +593,6 @@ EnemyOffScreenBehaviour:
   LDA #STATE_ENEMY_REMOVE
   STA enemies+$7, x
 
-  ;INC enemiesNeedCleaning
-  
   RTS
 
 ;;;;;;;;;;;
@@ -606,9 +634,9 @@ EnemySpawnCheck:
     JSR InitEnemy
     
     ; reset the y-coordinate (centre and actual)
-    LDA #$00
-    STA enemies+$1, x
-    STA enemies+$6, x
+    ;LDA #$00
+    ;STA enemies+$1, x
+    ;STA enemies+$6, x
     
     ;JSR IncEnemyIndexX
     ;STX enemyIndex
@@ -1100,8 +1128,6 @@ UpdateEnemySprites:
     
   UpdateEnemySpritesDone:
   
-  ;JSR DrawExplosions
-  
   JSR DrawEnemyFire
   
   UpdateEnemySpritesRTS:
@@ -1181,73 +1207,6 @@ DrawExplosion:
     
     RTS
 
-;;;;;;;;;;;;;;;;;;;;;
-
-DrawExplosions:
-  
-  LDA enemyExplosionCount
-  BEQ DrawExplosionsDone
-  
-  INC needDMA  
-  
-  LDX #$00 ; explosions index
-  LDY #$00 ; explosions sprite index
-  
-  DrawExplosionsLoop:
-  
-    ; x
-    LDA enemyExplosions, x
-    STA #ENEMY_EXPLOSION_SPRITE+$3, y  
-  
-    ; y
-    LDA enemyExplosions+$1, x
-    STA #ENEMY_EXPLOSION_SPRITE, y
-    
-    ; tile
-    TXA
-    PHA
-    
-    LDA enemyExplosions+$2, x
-    
-    ; going to modulo the counter to get the frame    
-    PHA
-    
-    LDA #$04
-    PHA
-    
-    JSR Mod
-    
-    ; get the return value and also clean up
-    PLA        
-    PLA
-    TAX
-    
-    LDA explosionAnim, x
-    STA #ENEMY_EXPLOSION_SPRITE+$1, y 
-    
-    PLA
-    TAX
-
-    ; attrs
-    LDA #$01 ; just set the palette
-    STA #ENEMY_EXPLOSION_SPRITE+$2, y
-    
-    INX
-    INX
-    INX
-    INX
-  
-    INY
-    INY
-    INY
-    INY
-  
-    CPX #MAX_EXPLOSION_INDEX
-    BNE DrawExplosionsLoop
-    
-  DrawExplosionsDone:
-    RTS    
-    
 ;;;;;;;;;;;;;;;;;;;;;
 
 DrawEnemyFire:

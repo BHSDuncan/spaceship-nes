@@ -1,7 +1,7 @@
 
 ENUM $05D3
-	value: .word 1
-	delta: .word 1
+	value: .dsw 1
+	delta: .dsw 1
 	 
 	sine: .dsb 256
 	cosine: .dsb 256
@@ -136,3 +136,35 @@ noEor:
   STA seed
   
   RTS
+  
+;;;;;;;;;;;;;;;;
+
+; Y should hold the digit position (0 being most significant)
+; AX should carry the address of the number of points to be added
+
+AddDigit:
+  LDA (pScoreL), y
+  ADC (AX), y
+  CMP #$0A ; need to check digit for carry
+  BCC AddDigitEnd
+  SBC #$0A
+  
+  AddDigitEnd:
+    STA (pScoreL), y
+  
+  RTS
+  
+;;;;;;;;;;;;;;;;
+
+; coming into here, AX should be set to the address of the number of points to be added
+
+AddPoints:
+  LDY #NUM_SCORE_DIGITS-1
+  CLC
+  
+  AddDigitLoop:
+    JSR AddDigit
+    DEY
+    BPL AddDigitLoop
+    
+  RTS 
