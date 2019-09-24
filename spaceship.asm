@@ -1,4 +1,4 @@
-PRG_COUNT = 1 ;1 = 16KB, 2 = 32KB
+PRG_COUNT = 2 ;1 = 16KB, 2 = 32KB
 MIRRORING = %0000 ;%0000 = horizontal, %0001 = vertical, %1000 = four-screen
 
    .db "NES", $1a ;identification of the iNES header
@@ -297,6 +297,11 @@ InitVars:
   LDA #%00011000   ; enable sprites, enable background, no clipping on left side
   STA $2001
 
+  JSR sound_init
+
+  LDA #MAIN_SONG_IDX
+  JSR sound_load
+
 DoFrame:
   JSR ReadController1  ;;get the current button data for player 1
   ;JSR ReadController2  ;;get the current button data for player 2
@@ -438,6 +443,9 @@ NTSwapCheckDone:
   STA needDraw
     
   RestoreRegisters:
+  
+  JSR sound_play_frame
+  
   LDA #$00
   STA sleeping
   
@@ -574,6 +582,9 @@ palette:
 bgPalette:
   .db $0f,$00,$10,$30,$0f,$01,$21,$2d,$0f,$06,$16,$26,$0f,$09,$19,$29
 
+; trying to implement unpacked BCD representation since the NES 6502 doesn't support BCD natively
+Points100: .db 0,0,0,1,0,0
+
 bgdat:
   .incbin "space.nam"
   
@@ -584,8 +595,16 @@ bgattrs:
   .include "enemies.asm"
   .include "player.asm"
 
-; trying to implement unpacked BCD representation since the NES 6502 doesn't support BCD natively
-Points100: .db 0,0,0,1,0,0
+	.include "sound/sound_engine.asm"
+	.include "sound/sound_opcodes.asm"
+	.include "sound/note_table.asm" ;period lookup table for notes
+    .include "sound/volume_envelopes.asm"
+    .include "sound/sound_headers.asm"
+	.include "sound/main_song.asm"
+	.include "sound/explosion_sound.asm"
+	.include "sound/bullet_sound.asm"
+	.include "sound/enemy_bullet_sound.asm"
+	
 
 .org $FFFA     ;first of the three vectors starts here
   .dw NMI        ;when an NMI happens (once per frame if enabled) the 

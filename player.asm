@@ -268,6 +268,15 @@ CheckEnemyCollision:
     LDA #STATE_PLAYER_DYING
     STA playerState
 
+	TXA
+	PHA
+
+    LDA #SOUND_EXPLOSION_IDX
+    JSR sound_load 
+
+	PLA
+	TAX
+
     CheckNextEnemyCollision:
       JSR IncEnemyIndexX
     
@@ -306,6 +315,15 @@ CheckEnemyBulletCollision:
     ; collision!
     LDA #STATE_PLAYER_DYING
     STA playerState
+    
+    TXA
+    PHA
+    
+    LDA #SOUND_EXPLOSION_IDX
+    JSR sound_load 
+    
+    PLA
+    TAX
     
     CheckNextEnemyBulletCollision:
     
@@ -691,6 +709,9 @@ DoShoot:
   
   LDA playerY
   STA bullets+$1, x 
+  
+  LDA #SOUND_BULLET_IDX
+  JSR sound_load
     
   JMP DoShootDone
    

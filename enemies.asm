@@ -483,6 +483,21 @@ EnemyDyingBehaviour:
 	  
 	  INC enemyExplosionCount
   
+  	  TYA
+  	  PHA
+  	  
+  	  TXA
+  	  PHA
+  	  
+      LDA #SOUND_EXPLOSION_IDX
+      JSR sound_load 
+  
+  	  PLA
+  	  TAX
+  	  
+  	  PLA
+  	  TAY
+  	  
   EnemyDyingBehaviourDone:
   	RTS
 
@@ -794,7 +809,22 @@ EnemyBulletUpdate:
       
       ; need to store enemy index
       STX enemyBullets+$5, y      
-            
+      
+      TYA
+      PHA
+      
+      TXA
+      PHA
+         
+      LDA #SOUND_ENEMY_BULLET_IDX
+      JSR sound_load 
+      
+      PLA
+      TAX
+      
+      PLA
+      TAY
+           
       INY
       INY
       INY
