@@ -1,11 +1,11 @@
 PRG_COUNT = 2 ;1 = 16KB, 2 = 32KB
-MIRRORING = %0000 ;%0000 = horizontal, %0001 = vertical, %1000 = four-screen
+MIRRORING = %0011 ;%0000 = horizontal, %0001 = vertical, %1000 = four-screen
 
    .db "NES", $1a ;identification of the iNES header
    .db PRG_COUNT ;number of 16KB PRG-ROM pages
    .db $01 ;number of 8KB CHR-ROM pages
    ;.db $30|MIRRORING ;mapper 3 and mirroring
-   .db $3|MIRRORING ;mapper 0 and mirroring
+   .db MIRRORING ;mapper 0 and mirroring
    .dsb 9, $00 ;clear the remaining bytes
 
 ;;;;;;;;;;;;;;;;;;
@@ -56,6 +56,8 @@ NUM_SCORE_DIGITS = 6
 
 SCORE_START_SPRITE = $02DC
 SCORE_START_HORIZ = $08
+
+BLINK_FRAME_COUNT = $20
 ;;;;;;;;;;;;;;;;;;
 
 ; borrowed this idea from "furrykef" on GitHub
@@ -137,6 +139,9 @@ clrmem:
   ; load in title bg stuff
   JSR DoTitleBankSwap
   
+  LDA #$01
+  STA needDraw
+    
 ;;;;;;;;;;;;;;;;;;;;
 
 
@@ -159,13 +164,16 @@ InitVars:
   LDA #DRAW_DELAY
   STA scrollFlip
   
+  ; going to borrow some vars from other areas to help w blink
+  LDA #BLINK_FRAME_COUNT
+  STA frameCounter
+  
+  LDA #$50
+  STA tempBVar
+  
 ;;;;;;;;;;;;;;;;;;;
 ; Separate the logic from the drawing: Do the logic here, so we don't overload the NMI and risk not getting all the drawing done for vBlank.
 ;
-  
-  LDA gamestate
-  CMP #STATETITLE
-  BNE @setupPlaying
   
   LDA #%10010000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
   STA $2000
@@ -173,16 +181,6 @@ InitVars:
   LDA #%00011000   ; enable sprites, enable background, no clipping on left side
   STA $2001  
   
-  JMP @soundInit
-  
-  @setupPlaying:
-  LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
-  STA $2000
-
-  LDA #%00011000   ; enable sprites, enable background, no clipping on left side
-  STA $2001
-
-  @soundInit:
   JSR sound_init
 
   LDA #MAIN_SONG_IDX
@@ -250,7 +248,52 @@ WaitFrame:
   
 ;;;;;;;;;;;;;;;;;;;;;;
 
+DoBlink:
+  LDA $2002             ; read PPU status to reset the high/low latch
+  LDA #$23
+  STA $2006             ; write the high byte of $23EA address
+  LDA #$EA
+  STA $2006             ; write the low byte of $23EA address
+  LDX #$00              
+  @blinkAttrLoop:
+  LDA tempBVar
+  STA $2007             ; write to PPU
+  INX
+  CPX #$04
+  BNE @blinkAttrLoop
+  
+  LDA tempBVar
+  BEQ @setBlinkInvisible
+  
+  LDA #$00
+  
+  JMP @doBlinkDone
+  
+  @setBlinkInvisible:
+  LDA #$50
+  
+  @doBlinkDone:
+  STA tempBVar
+  
+  ; would really like to know why I have to do this here when I have something similar below
+  ;LDA #$01
+  ;STA needDraw
+  LDA #$00
+  STA $2005
+  STA $2005
+  
+  RTS
+;;;;;;;;;;;;;;;;;;;;;;
 EngineTitle:
+  DEC frameCounter
+  BNE @skipBlink
+
+  JSR DoBlink
+
+  LDA #BLINK_FRAME_COUNT
+  STA frameCounter
+  
+  @skipBlink:
   JSR HandlePlayerInput
   
   JMP GameEngineDone
@@ -328,13 +371,32 @@ NTSwapCheckDone:
   STA $2006        ; clean up PPU address registers
   STA $2006
   
+  ;;This is the PPU clean up section, so rendering the next frame starts properly.
+  LDA gamestate
+  CMP #STATETITLE
+  BNE @setupPlaying  
+
+  ; have to explicitly state no scrolling while in this mode
+  LDA #$00
+  STA $2005
+  STA $2005   
+
+  LDA #%10010000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
+  STA $2000
+  
+  LDA #%00011000   ; enable sprites, enable background, clipping on left side
+  STA $2001
+  
+  JMP @resetDraw
+  
+  @setupPlaying:
+
   LDA #$00
   STA $2005        ; write the horizontal scroll count register
 
   LDA scroll
-  STA $2005
+  STA $2005  
   
-  ;;This is the PPU clean up section, so rendering the next frame starts properly.
   LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
   ORA nametable    ; select correct nametable for bit 0
   STA $2000
@@ -342,6 +404,7 @@ NTSwapCheckDone:
   LDA #%00011000   ; enable sprites, enable background, clipping on left side
   STA $2001
 
+  @resetDraw
   LDA #$00
   STA needDraw
     
@@ -351,7 +414,7 @@ NTSwapCheckDone:
   
   LDA #$00
   STA sleeping
-  
+
   ; restore registers
   PLA
   TAY
