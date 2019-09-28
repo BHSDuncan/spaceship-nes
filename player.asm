@@ -119,6 +119,9 @@ HandlePlayerInput:
   JSR LoadPlayerSprites
   JSR LoadEnemySprites
   
+  LDA #MAIN_SONG_IDX
+  JSR sound_load
+  
   LDA #STATEPLAYING
   STA gamestate
   

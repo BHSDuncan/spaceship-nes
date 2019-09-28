@@ -183,7 +183,7 @@ InitVars:
   
   JSR sound_init
 
-  LDA #MAIN_SONG_IDX
+  LDA #TITLE_SONG_IDX
   JSR sound_load
 
 DoFrame:
@@ -597,6 +597,7 @@ titleAttrs:
     .include "sound/volume_envelopes.asm"
     .include "sound/sound_headers.asm"
 	.include "sound/main_song.asm"
+	.include "sound/title_music.asm"
 	.include "sound/explosion_sound.asm"
 	.include "sound/bullet_sound.asm"
 	.include "sound/enemy_bullet_sound.asm"
