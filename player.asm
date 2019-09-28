@@ -101,6 +101,30 @@ InitPlayerVars:
 ;;;;;;;;;;;;;
 
 HandlePlayerInput:
+  LDA gamestate
+  CMP #STATETITLE
+  BNE CheckNoFire
+  
+  ; start check
+  LDA buttons1
+  AND #%00010000
+  BEQ AllDone
+  
+  ; really should move this code out of player-specific handling at some point
+  JSR DoLevelBankSwap
+  
+  JSR InitPlayerVars
+  JSR InitEnemyVars
+  
+  JSR LoadPlayerSprites
+  JSR LoadEnemySprites
+  
+  LDA #STATEPLAYING
+  STA gamestate
+  
+  JMP AllDone
+  
+  ; PLAYING state
 	CheckNoFire:
 	  LDA buttons1
 	  AND #%10000000
@@ -186,7 +210,6 @@ HandlePlayerInput:
 	AllDone:
 	
 	  RTS
-  
 ;;;;;;;;;;;;;;;;;
 
 DoPlayerBehaviour:
@@ -675,8 +698,7 @@ DisplayPlayerBullets:
   DisplayPlayerBulletsDone:
     RTS
 
-;;;;;;;;;;;;;;;;;;;
- 
+;;;;;;;;;;;;;;;;;;; 
 DoShoot:
   LDA bulletCount
   CMP #MAX_PLAYER_BULLETS

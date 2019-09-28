@@ -3,8 +3,8 @@ MIRRORING = %0000 ;%0000 = horizontal, %0001 = vertical, %1000 = four-screen
 
    .db "NES", $1a ;identification of the iNES header
    .db PRG_COUNT ;number of 16KB PRG-ROM pages
-   .db $01 ;number of 8KB CHR-ROM pages
-   .db $00|MIRRORING ;mapper 0 and mirroring
+   .db $02 ;number of 8KB CHR-ROM pages
+   .db $30|MIRRORING ;mapper 3 and mirroring
    .dsb 9, $00 ;clear the remaining bytes
 
 ;;;;;;;;;;;;;;;;;;
@@ -127,137 +127,13 @@ clrmem:
   INX
   BNE clrmem
   
+  LDA #$01
+  STA needDMA
+  
   JSR vblankwait
    
-LoadPalettes:
-  LDA $2002             ; read PPU status to reset the high/low latch
-  LDA #$3F
-  STA $2006             ; write the high byte of $3F00 address
-  LDA #$10
-  STA $2006             ; write the low byte of $3F00 address
-  LDX #$00              ; start out at 0
-LoadPalettesLoop:
-  LDA palette, x        ; load data from address (palette + the value in x)
-                          ; 1st time through loop it will load palette+0
-                          ; 2nd time through loop it will load palette+1
-                          ; 3rd time through loop it will load palette+2
-                          ; etc
-  STA $2007             ; write to PPU
-  INX                   ; X = X + 1
-  CPX #$10            
-  BNE LoadPalettesLoop  ; Branch to LoadPalettesLoop if compare was Not Equal to zero
-                        ; if compare was equal to 32, keep going down  
-
-LoadBGPalettes:
-  LDA $2002             ; read PPU status to reset the high/low latch
-  LDA #$3F
-  STA $2006             ; write the high byte of $3F00 address
-  LDA #$00
-  STA $2006             ; write the low byte of $3F00 address
-  LDX #$00              ; start out at 0
-LoadBGPalettesLoop:
-  LDA bgPalette, x        ; load data from address (palette + the value in x)
-                          ; 1st time through loop it will load palette+0
-                          ; 2nd time through loop it will load palette+1
-                          ; 3rd time through loop it will load palette+2
-                          ; etc
-  STA $2007             ; write to PPU
-  INX                   ; X = X + 1
-  CPX #$10            
-  BNE LoadBGPalettesLoop  ; Branch to LoadPalettesLoop if compare was Not Equal to zero
-                        ; if compare was equal to 32, keep going down  
-
-
-LoadNametable0:
-  LDA $2002             ; read PPU status to reset the high/low latch
-  LDA #$20
-  STA $2006             ; write the high byte of $2000 address
-  LDA #$00
-  STA $2006             ; write the low byte of $2000 address
-
-  LDA #<bgdat
-  STA pointerLow
-  
-  LDA #>bgdat
-  STA pointerHigh
-  
-  LDX #$04
-  LDY #$00
-  
-LoadNametable0Loop:
-  LDA (pointerLow), y     ; load data from address
-  STA $2007             ; write to PPU
-  INY
-  BNE LoadNametable0Loop
-  INC pointerHigh
-  DEX
-  BNE LoadNametable0Loop  ; Branch to LoadBackgroundLoop if compare was Not Equal to zero
-                        ; if compare was equal to 128, keep going down
-
-LoadNametable2:
-  LDA $2002             ; read PPU status to reset the high/low latch
-  LDA #$28
-  STA $2006             ; write the high byte of $2800 address
-  LDA #$00
-  STA $2006             ; write the low byte of $2800 address
-
-  LDA #<bgdat
-  STA pointerLow
-  
-  LDA #>bgdat
-  STA pointerHigh
-  
-  LDX #$04
-  LDY #$00
-  
-LoadNametable2Loop:
-  LDA (pointerLow), y     ; load data from address
-  STA $2007             ; write to PPU
-  INY
-  BNE LoadNametable2Loop
-  INC pointerHigh
-  DEX
-  BNE LoadNametable2Loop  ; Branch to LoadBackgroundLoop if compare was Not Equal to zero
-                        ; if compare was equal to 128, keep going down
-              
-LoadAttribute0:
-  LDA $2002             ; read PPU status to reset the high/low latch
-  LDA #$23
-  STA $2006             ; write the high byte of $23C0 address
-  LDA #$C0
-  STA $2006             ; write the low byte of $23C0 address
-  LDX #$00              ; start out at 0
-LoadAttribute0Loop:
-  LDA bgattrs, x      ; load data from address (attribute + the value in x)
-  STA $2007             ; write to PPU
-  INX                   ; X = X + 1
-  CPX #$40              ; Compare X to hex $08, decimal 8 - copying 8 bytes
-  BNE LoadAttribute0Loop  ; Branch to LoadAttributeLoop if compare was Not Equal to zero
-                        ; if compare was equal to 128, keep going down
-
-LoadAttribute2:
-  LDA $2002             ; read PPU status to reset the high/low latch
-  LDA #$2B
-  STA $2006             ; write the high byte of $2BC0 address
-  LDA #$C0
-  STA $2006             ; write the low byte of $2BC0 address
-  LDX #$00              ; start out at 0
-LoadAttribute2Loop:
-  LDA bgattrs, x      ; load data from address (attribute + the value in x)
-  STA $2007             ; write to PPU
-  INX                   ; X = X + 1
-  CPX #$40              ; Compare X to hex $08, decimal 8 - copying 8 bytes
-  BNE LoadAttribute2Loop  ; Branch to LoadAttributeLoop if compare was Not Equal to zero
-                        ; if compare was equal to 128, keep going down
-
-  JSR LoadPlayerSprites
-  JSR LoadEnemySprites
-
-  ;LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
-  ;STA $2000
-
-  ;LDA #%00011000   ; enable sprites, enable background, no clipping on left side
-  ;STA $2001
+  ; load in title bg stuff
+  JSR DoTitleBankSwap
   
 ;;;;;;;;;;;;;;;;;;;;
 
@@ -266,7 +142,7 @@ JSR InitSineTable
 JSR InitCosineTable
 
 InitVars:
-  LDA #STATEPLAYING
+  LDA #STATETITLE
   STA gamestate
   
   LDA #$00
@@ -281,22 +157,17 @@ InitVars:
   LDA #DRAW_DELAY
   STA scrollFlip
   
-  JSR InitPlayerVars
-  JSR InitiEnemyVars
-    
-;Forever:
-  ;JMP Forever     ;jump back to Forever, infinite loop, waiting for NMI
-
 ;;;;;;;;;;;;;;;;;;;
 ; Separate the logic from the drawing: Do the logic here, so we don't overload the NMI and risk not getting all the drawing done for vBlank.
 ;
-
+  
   LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
   STA $2000
 
   LDA #%00011000   ; enable sprites, enable background, no clipping on left side
   STA $2001
 
+  @soundInit:
   JSR sound_init
 
   LDA #MAIN_SONG_IDX
@@ -306,7 +177,18 @@ DoFrame:
   JSR ReadController1  ;;get the current button data for player 1
   ;JSR ReadController2  ;;get the current button data for player 2
   
+  LDA gamestate
+  CMP #STATEPLAYING
+  BNE @stateTitle
+  
   DEC scrollFlip
+  
+  JMP @gameEngine  
+  
+  @stateTitle:
+  CMP scrollFlip
+  
+  @gameEngine:
   BNE GameEngine   
   
   LDA #DRAW_DELAY
@@ -316,9 +198,9 @@ DoFrame:
   STA needDraw  
   
   GameEngine:  
-  ;LDA gamestate
-  ;CMP #STATETITLE
-  ;BEQ EngineTitle    ;;game is displaying title screen
+  LDA gamestate
+  CMP #STATETITLE
+  BEQ EngineTitle    ;;game is displaying title screen
     
   ;LDA gamestate
   ;CMP #STATEGAMEOVER
@@ -330,7 +212,6 @@ DoFrame:
   
   GameEngineDone: 
   
-  JSR UpdateSprites
   ;LDA #$01
   ;STA needDMA  
 
@@ -354,12 +235,19 @@ WaitFrame:
   
 ;;;;;;;;;;;;;;;;;;;;;;
 
+EngineTitle:
+  JSR HandlePlayerInput
+  
+  JMP GameEngineDone
+
 EnginePlaying:
 
   JSR HandlePlayerInput
   JSR DoPlayerBehaviour
   JSR DoEnemyBehaviour
   JSR DrawScore
+  
+  JSR UpdateSprites
   
   JMP GameEngineDone
 
@@ -573,6 +461,21 @@ FlushDl:
   RTS
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+Bankswitch:
+
+  TAX ;;copy A into X
+
+  STA Bankvalues, X ;;new bank to use
+
+  RTS
+
+
+Bankvalues:
+
+  .db $00, $01 ;bank numbers
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 .org $E000
   
@@ -581,6 +484,9 @@ palette:
 
 bgPalette:
   .db $0f,$00,$10,$30,$0f,$01,$21,$2d,$0f,$06,$16,$26,$0f,$09,$19,$29
+
+titlePalette:
+  .incbin "title.pal"
 
 ; trying to implement unpacked BCD representation since the NES 6502 doesn't support BCD natively
 Points100: .db 0,0,0,1,0,0
@@ -591,9 +497,20 @@ bgdat:
 bgattrs:
   .incbin "spaceAttr.bin"
 
+titleDat:
+  .incbin "title.nam"
+  
+titleAttrs:
+  .incbin "title.bin"
+
   .include "math.asm"
   .include "enemies.asm"
   .include "player.asm"
+
+  LDA #$01  
+
+  .include "title_bank_swap.asm"
+  .include "level_bank_swap.asm"
 
 	.include "sound/sound_engine.asm"
 	.include "sound/sound_opcodes.asm"
@@ -616,6 +533,10 @@ bgattrs:
   
 ;;;;;;;;;;;;;;  
   
+  BASE $0000 
+  .incbin "title.chr"
+  PAD $2000
   
   BASE $0000
-  .incbin "spaceship.chr" 
+  .incbin "spaceship.chr"
+  PAD $2000

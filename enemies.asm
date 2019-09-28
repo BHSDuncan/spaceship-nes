@@ -55,7 +55,7 @@ STATE_ENEMY_WAITING = $FC
 
 ;;;;;;;;;;;;;
 
-InitiEnemyVars:
+InitEnemyVars:
   LDA #NUM_ENEMIES_L1
   STA enemyCount
   
