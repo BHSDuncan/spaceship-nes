@@ -5,8 +5,8 @@ JMP TitleBankSwapDone
 
 DoTitleBankSwap:
 
-LDA #$00
-JSR Bankswitch
+;LDA #$00
+;JSR Bankswitch
 
 LoadTitlePalettes:
   LDA $2002             ; read PPU status to reset the high/low latch

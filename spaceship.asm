@@ -3,8 +3,9 @@ MIRRORING = %0000 ;%0000 = horizontal, %0001 = vertical, %1000 = four-screen
 
    .db "NES", $1a ;identification of the iNES header
    .db PRG_COUNT ;number of 16KB PRG-ROM pages
-   .db $02 ;number of 8KB CHR-ROM pages
-   .db $30|MIRRORING ;mapper 3 and mirroring
+   .db $01 ;number of 8KB CHR-ROM pages
+   ;.db $30|MIRRORING ;mapper 3 and mirroring
+   .db $3|MIRRORING ;mapper 0 and mirroring
    .dsb 9, $00 ;clear the remaining bytes
 
 ;;;;;;;;;;;;;;;;;;
@@ -127,6 +128,7 @@ clrmem:
   INX
   BNE clrmem
   
+  ; need this in case the system (emulator?) is reset in order to clear out the sprites
   LDA #$01
   STA needDMA
   
@@ -161,6 +163,19 @@ InitVars:
 ; Separate the logic from the drawing: Do the logic here, so we don't overload the NMI and risk not getting all the drawing done for vBlank.
 ;
   
+  LDA gamestate
+  CMP #STATETITLE
+  BNE @setupPlaying
+  
+  LDA #%10010000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 1
+  STA $2000
+
+  LDA #%00011000   ; enable sprites, enable background, no clipping on left side
+  STA $2001  
+  
+  JMP @soundInit
+  
+  @setupPlaying:
   LDA #%10000000   ; enable NMI, sprites from Pattern Table 0, background from Pattern Table 0
   STA $2000
 
@@ -507,6 +522,7 @@ titleAttrs:
   .include "enemies.asm"
   .include "player.asm"
 
+  ; this prevents the "swap" includes from executing when being included
   LDA #$01  
 
   .include "title_bank_swap.asm"
@@ -533,10 +549,10 @@ titleAttrs:
   
 ;;;;;;;;;;;;;;  
   
-  BASE $0000 
-  .incbin "title.chr"
-  PAD $2000
+  ;BASE $0000 
+  ;.incbin "title.chr"
+  ;PAD $2000
   
   BASE $0000
   .incbin "spaceship.chr"
-  PAD $2000
+  ;PAD $2000

@@ -9,8 +9,8 @@ DoLevelBankSwap:
   STX $2000    ; disable NMI
   STX $2001    ; disable rendering
   
-LDA #$01
-JSR Bankswitch
+;LDA #$01
+;JSR Bankswitch
 
 LoadPalettes:
   LDA $2002             ; read PPU status to reset the high/low latch
