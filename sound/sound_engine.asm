@@ -27,10 +27,11 @@
 	ve_drum_decay = $09
 	ve_pm_1 = $0A
 	ve_long_fade_out = $0B
+	ve_long_fade_in = $0C
 
 
 	;.zeropage
-ENUM $0000
+ENUM $00C0
 	
 sound_ptr:		.dsb	2
 sound_ptr2:		.dsb	2
