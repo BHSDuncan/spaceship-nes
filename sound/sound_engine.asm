@@ -30,7 +30,7 @@
 
 
 	;.zeropage
-ENUM $00C0
+ENUM $0000
 	
 sound_ptr:		.dsb	2
 sound_ptr2:		.dsb	2
@@ -296,8 +296,10 @@ se_fetch_byte:
 	lda	#$00		; Start at beginning of envelope for new notes
 	sta	stream_ve_index, x
 	;; Check if it's a rest and modify the status flag appropriately
-	jsr	se_check_rest
+
 @reset_ve:
+	jsr	se_check_rest
+	
 	lda #$00
 	sta stream_ve_index, x
 @update_pointer:
@@ -397,6 +399,22 @@ se_set_temp_ports:
 	lda	stream_note_hi, x
 	sta	soft_apu_ports+3, y
 	
+	;check the rest flag. if set, overwrite volume with silence value
+    lda stream_status, x
+    and #%00000010
+    beq @done       ;if clear, no rest, so quit
+    lda stream_channel, x
+    cmp #TRIANGLE   ;if triangle, silence with #$80
+    beq @tri        
+    lda #$30        ;else, silence with #$30
+    bne @store      ;this will always branch.  bne is cheaper than a jmp.
+	
+	@tri:
+    lda #$80
+	@store:    
+    sta soft_apu_ports, y
+    
+    @done:
 	rts
 
 ;;;
