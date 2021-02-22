@@ -19,6 +19,7 @@ ENUM $0001  ;;start variables at ram location 1; at 0, setting #$02 to certain v
   scrollFlip: .dsb 1
   nametable: .dsb 1
   sleeping: .dsb 1
+  enemyDeathCount: .dsb 1
   
   displayListReady: .dsb 1
   displayListIndex: .dsb 1
@@ -46,8 +47,13 @@ ENDE
 
 ;; constants
 STATETITLE     = $00  
-STATEPLAYING   = $01  
-STATEGAMEOVER  = $02  
+STATELOADING = $01
+STATEPLAYING   = $02
+STATECLEARLEVEL = $03
+STATEBOSSLOADING = $04
+STATEBOSSFIGHT = $05
+STATECLEARBOSS = $06
+STATEGAMEOVER  = $07  
 
 DRAW_DELAY = $03
 SCROLL_START = $EF
@@ -58,6 +64,8 @@ SCORE_START_SPRITE = $02DC
 SCORE_START_HORIZ = $08
 
 BLINK_FRAME_COUNT = $20
+
+LEVEL_MAX_ENEMIES_DEAD = $01
 ;;;;;;;;;;;;;;;;;;
 
 ; borrowed this idea from "furrykef" on GitHub
@@ -157,6 +165,7 @@ InitVars:
   STA nametable  
   STA displayListIndex
   STA displayListReady
+  STA enemyDeathCount
   
   LDA #SCROLL_START
   STA scroll
@@ -218,10 +227,18 @@ DoFrame:
   ;LDA gamestate
   ;CMP #STATEGAMEOVER
   ;BEQ EngineGameOver  ;;game is displaying ending screen
+
+  LDA gamestate
+  CMP #STATECLEARLEVEL
+  BEQ EngineClearLevel
+
+  LDA gamestate
+  CMP #STATEBOSSLOADING
+  BEQ EngineBossLoading
   
-    LDA gamestate
-    CMP #STATEPLAYING
-    BEQ EnginePlaying   ;;game is playing
+  LDA gamestate
+  CMP #STATEPLAYING
+  BEQ EnginePlaying   ;;game is playing
   
   GameEngineDone: 
   
@@ -284,6 +301,7 @@ DoBlink:
   
   RTS
 ;;;;;;;;;;;;;;;;;;;;;;
+
 EngineTitle:
   DEC frameCounter
   BNE @skipBlink
@@ -298,8 +316,39 @@ EngineTitle:
   
   JMP GameEngineDone
 
-EnginePlaying:
+;;;;;;;;;;;;;;;;;;
 
+EngineBossLoading:
+  JSR LoadBoss  
+
+  JMP GameEngineDone
+  
+;;;;;;;;;;;;;;;;;;
+
+EngineClearLevel:
+  JSR ClearAllEnemies
+  ;JSR ClearEnemyVars
+  ;JSR ClearEnemySprites    
+  
+  JSR UpdateSprites
+  
+  JMP GameEngineDone
+
+;;;;;;;;;;;;;;;;;;
+
+EnginePlaying:
+  
+  LDA enemyDeathCount
+  CMP #LEVEL_MAX_ENEMIES_DEAD
+  BNE @enginePlaying
+  
+  ; time to switch over to a boss fight
+  LDA #STATECLEARLEVEL
+  STA gamestate
+  
+  JMP GameEngineDone
+  
+  @enginePlaying:
   JSR HandlePlayerInput
   JSR DoPlayerBehaviour
   JSR DoEnemyBehaviour
@@ -584,6 +633,7 @@ titleAttrs:
   .include "math.asm"
   .include "enemies.asm"
   .include "player.asm"
+  .include "boss.asm"
 
   ; this prevents the "swap" includes from executing when being included
   LDA #$01  

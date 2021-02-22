@@ -5,7 +5,7 @@
 ;;;;;;;;;;;;;;
  
 ; variables
-ENUM $003C
+ENUM $003D
   enemies: .dsb 48   ; (centreX, centreY, degrees, attackDelay, numFired, actualX, actualY, state) do this similar to bullets (8 bytes x 6 enemies)
   enemyBullets: .dsb 36 ; (x, y, tile, palette, frameCounter, enemyIndex) => 6 bytes x 6 bullets)
   enemyExplosions: .dsb 24 ; (x, y, frame, frameDelay) => (4 bytes x 6 enemies)
@@ -36,7 +36,8 @@ ENEMY_BULLET_SPEED = $02
 MAX_TOTAL_ENEMY_BULLET_COUNT = $04
 MAX_ENEMY_BULLET_COUNT = $02
 MAX_ENEMY_BULLET_INDEX = $28 ; $24, but should be one sprite past
-MAX_ENEMY_INDEX = $30
+MAX_ENEMY_INDEX = $2C
+MAX_ENEMIES_INDEX = $24
 EXPLOSION_FRAME_DELAY = $04
 MAX_EXPLOSION_FRAMES = $03
 MAX_EXPLOSION_INDEX = $30
@@ -52,6 +53,36 @@ STATE_ENEMY_CLEANUP = $04
 STATE_ENEMY_DEAD = $FE
 STATE_ENEMY_REMOVE = $FD
 STATE_ENEMY_WAITING = $FC
+
+;;;;;;;;;;;;;
+
+ClearEnemyVars:
+  LDA #$00
+  STA enemyCount
+  STA enemyDegrees
+  STA enemyBulletCount
+  STA enemyBulletIndex
+  STA enemyExplosionCount
+  STA enemyDelay
+  
+  LDA #$00
+  LDX #$00
+  
+  ClearEnemyBulletsLoop:
+    STA enemyBullets, x
+    INX
+    CPX #MAX_ENEMY_BULLET_INDEX
+    BNE ClearEnemyBulletsLoop
+  
+  LDX #$00
+  
+  @clearEnemiesLoop:
+    STA enemies, x
+    INX
+    CPX #MAX_ENEMIES_INDEX
+    BNE @clearEnemiesLoop
+  
+  RTS
 
 ;;;;;;;;;;;;;
 
@@ -328,6 +359,8 @@ CheckPlayerBulletCollision:
     ;CLC
     ;ADC #ENEMY_POINT_VALUE
     ;STA score
+
+	INC enemyDeathCount
 
 	LDA #<Points100
 	STA AL
@@ -1018,6 +1051,43 @@ UpdateAliveEnemy:
 
 ;;;;;;;;;;;
 
+ClearAllEnemies:
+  LDX #$00
+
+  @clearAllEnemiesNext:
+    LDA #STATE_ENEMY_CLEANUP
+    STA enemies+$7, x ; state
+
+    JSR IncEnemyIndexX
+    CPX #MAX_ENEMY_INDEX
+    BNE @clearAllEnemiesNext
+
+  RTS
+
+;;;;;;;;;;;
+
+ClearEnemySprites:
+  LDX #$00
+  LDY #$00
+
+  @clearEnemySpritesNext:
+    JSR ClearEnemySprite
+
+    ; increase the meta sprite index for drawing
+	TYA
+    CLC
+    ADC #ENEMY_META_SPRITE_INTERVAL
+    TAY
+
+	INX    
+    CPX #NUM_ENEMIES_L1
+    BNE @clearEnemySpritesDone
+    
+    JMP @clearEnemySpritesNext    
+    
+  @clearEnemySpritesDone:
+        
+  RTS
 
 ; TODO: Explosions are currently tied to enemy index (8 as opposed to 4) and this probably needs changing.
 

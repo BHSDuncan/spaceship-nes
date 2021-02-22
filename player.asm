@@ -1,5 +1,5 @@
 ;; variables
-ENUM $0011
+ENUM $0012
   buttons1:   dsb 1  ; player 1 gamepad buttons, one bit per button
   playerX: dsb 1
   playerY: dsb 1
@@ -47,13 +47,6 @@ LoadPlayerSpritesLoop:
   CPX #$20              ; Compare X to hex $18, decimal 24
   BNE LoadPlayerSpritesLoop   ; Branch to LoadSpritesLoop if compare was Not Equal to zero
                         ; if compare was equal to 16, keep going down
-
-  ;LDA #%10000000   ; enable NMI, sprites from Pattern Table 0
-  ;STA $2000
-
-  ;LDA #%00010000   ; enable sprites
-  ;STA $2001
-  
   RTS
   
 ;;;;;;;;;;;
@@ -110,6 +103,8 @@ HandlePlayerInput:
   AND #%00010000
   BEQ AllDone
   
+  ; TITLE state
+
   ; really should move this code out of player-specific handling at some point
   JSR DoLevelBankSwap
   
@@ -126,9 +121,14 @@ HandlePlayerInput:
   STA gamestate
   
   JMP AllDone
-  
-  ; PLAYING state
+    
 	CheckNoFire:
+	
+  ; PLAYING state, but check if alive
+  LDA playerState
+  CMP #STATE_PLAYER_DEAD
+  BEQ AllDone
+	
 	  LDA buttons1
 	  AND #%10000000
 	  BNE MoveShipLeft
